@@ -1,0 +1,968 @@
+<script>
+    console.log('[LOAD] Scripts_Detalles OK');
+
+    window.toggleMonth = (v) => {
+        document.querySelectorAll(`.item-mes-${v}`).forEach(r => r.classList.toggle('collapsed-row'));
+        const icon = document.getElementById(`icon-${v}`);
+        if (icon) {
+            const collapsed = document.querySelector(`.item-mes-${v}`)?.classList.contains('collapsed-row');
+            icon.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+            icon.style.transition = 'transform 0.2s';
+        }
+        filterDashboard();
+    };
+
+    window.filterDashboard = () => {
+        const q = document.getElementById('search-dash').value.toLowerCase();
+        const estadoFilter = document.getElementById('filter-estado').value;
+        const mesFilter = document.getElementById('filter-mes').value;
+        const empresaFilter = document.getElementById('filter-empresa')?.value || '';
+        const ejecutivoFilter = document.getElementById('filter-ejecutivo')?.value || '';
+        const eventoFilter = document.getElementById('filter-evento')?.value || '';
+        const origenFilter = document.getElementById('filter-origen')?.value || '';
+        const destinoFilter = document.getElementById('filter-destino')?.value || '';
+        const rows = document.getElementById('dash-body').getElementsByClassName('tr-ticket');
+        const headers = document.getElementById('dash-body').getElementsByClassName('month-header');
+        const visible = {};
+
+        for (const r of rows) {
+            const textOk = r.innerText.toLowerCase().includes(q);
+            const estadoOk = !estadoFilter || r.getAttribute('data-estado') === estadoFilter;
+            const empresaOk = !empresaFilter || r.getAttribute('data-empresa') === empresaFilter;
+            const ejecutivoOk = !ejecutivoFilter || r.getAttribute('data-asignado') === ejecutivoFilter;
+            const eventoOk = !eventoFilter || r.getAttribute('data-evento') === eventoFilter;
+            const origenOk = !origenFilter || (r.getAttribute('data-origen') || '').split(',').includes(origenFilter);
+            const destinoOk = !destinoFilter || (r.getAttribute('data-destino') || '').split(',').includes(destinoFilter);
+            const mes = r.getAttribute('data-mes');
+            const mesOk = !mesFilter || mes === mesFilter;
+            const collapsed = r.classList.contains('collapsed-row');
+            const esAtencion = r.classList.contains('tr-atencion');
+
+            if (textOk && estadoOk && empresaOk && ejecutivoOk && eventoOk && origenOk && destinoOk && (mesOk || esAtencion)) {
+                if (mes) visible[mes] = (visible[mes] || 0) + 1;
+                r.style.display = collapsed ? 'none' : '';
+            } else {
+                r.style.display = 'none';
+            }
+        }
+
+        for (const h of headers) {
+            const hm = h.getAttribute('data-mes');
+            h.style.display = (mesFilter && hm !== mesFilter) ? 'none' : ((visible[hm] > 0) ? '' : 'none');
+        }
+
+        // ── Recalcular stats según los filtros activos ──────────────────────────────
+        if (session.role === 'admin' || session.role === 'indipris' || session.role === 'super') {
+            let ticketsFiltrados = localData.dashboard;
+            if (empresaFilter) ticketsFiltrados = ticketsFiltrados.filter(t => (t[10] || '') === empresaFilter);
+            if (ejecutivoFilter) ticketsFiltrados = ticketsFiltrados.filter(t => String(t[8] || '').trim() === ejecutivoFilter);
+            if (eventoFilter) ticketsFiltrados = ticketsFiltrados.filter(t => String(t[9] || '').trim() === eventoFilter);
+
+            const elPend = document.getElementById('stat-pendientes');
+            const elComp = document.getElementById('stat-comprados');
+            const elTot = document.getElementById('stat-total');
+
+            if (elPend) elPend.innerText = ticketsFiltrados.filter(t => t[4] === 'Pendiente').length;
+            if (elComp) elComp.innerText = ticketsFiltrados.filter(t => t[4] === 'Comprado').length;
+
+            if (elTot && localData.finanzas?.opciones) {
+                const idsVisibles = new Set(ticketsFiltrados.map(t => t[0]));
+                const total = localData.finanzas.opciones
+                    .filter(o => idsVisibles.has(o[0]) && (o[6] === 'Autorizada' || o[6] === 'Comprado' || o[6] === 'Extra'))
+                    .reduce((sum, o) => sum + Number(o[5] || 0), 0);
+                elTot.innerText = formatCurrency(total);
+            }
+
+            // Label dinámico de la tarjeta con nombre resuelto
+            const labelTot = document.getElementById('stat-total-label');
+            if (labelTot) {
+                if (empresaFilter) {
+                    const c = localData.companies.find(c => c.id === empresaFilter);
+                    labelTot.innerText = `Inversion Autorizada - ${c ? c.nombre : empresaFilter}`;
+                } else {
+                    labelTot.innerText = 'Inversión Autorizada';
+                }
+            }
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // FINANZAS
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MÓDULO FINANCIERO — lazy, sin bloquear carga inicial
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    let finChartInstances = {};  // guarda instancias de Chart para destruirlas antes de redibujar
+    let finDatosActuales = [];  // filas procesadas para la tabla (para ordenar sin recalcular)
+    let finSortKey = 'fecha';
+    let finSortDir = -1;  // -1 = desc
+
+    // ── Carga lazy de Chart.js (solo cuando se abre el tab) ──────────────────────
+    function loadChartJS() {
+        return new Promise((resolve) => {
+            if (window.Chart) return resolve();
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+            s.onload = resolve;
+            document.head.appendChild(s);
+        });
+    }
+
+    // ── Se llama desde switchTab('financiero') — nunca antes ─────────────────────
+    async function renderFinanzasTab() {
+        // Poblar filtro de empresas si aún no está
+        const selEmp = document.getElementById('filter-fin-empresa');
+        if (selEmp && selEmp.options.length <= 1 && localData.companies?.length > 0) {
+            const idsConTickets = new Set(localData.dashboard.map(t => t[10]).filter(Boolean));
+            localData.companies.filter(c => idsConTickets.has(c.id))
+                .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                .forEach(c => { selEmp.add(new Option(c.nombre, c.id)); });
+            if (session.role !== 'indipris' && session.role !== 'super') selEmp.classList.add('hidden');
+        }
+
+        // Poblar filtro de ejecutivos
+        const selEj = document.getElementById('filter-fin-ejecutivo');
+        if (selEj && selEj.options.length <= 1) {
+            const ejs = [...new Set(localData.dashboard.map(t => String(t[8] || '').trim()).filter(Boolean))].sort();
+            ejs.forEach(e => selEj.add(new Option(e, e)));
+            if (session.role !== 'super' && session.role !== 'indipris') selEj.parentElement?.classList.add('hidden');
+        }
+
+        // Poblar filtro de eventos
+        const selEvFin = document.getElementById('filter-fin-evento');
+        if (selEvFin && selEvFin.options.length <= 1) {
+            const evts = [...new Set(localData.dashboard.map(t => String(t[9] || '').trim()).filter(Boolean))].sort();
+            evts.forEach(ev => selEvFin.add(new Option(ev, ev)));
+        }
+
+        // Poblar filtros de origen/destino
+        const allOrFin = new Set();
+        const allDsFin = new Set();
+        localData.serviciosResumen.forEach(s => {
+            const o = String(s[2] || '').trim().toUpperCase();
+            const d = String(s[3] || '').trim().toUpperCase();
+            if (o) allOrFin.add(o);
+            if (d) allDsFin.add(d);
+        });
+        const selOrFin = document.getElementById('filter-fin-origen');
+        if (selOrFin && selOrFin.options.length <= 1) {
+            [...allOrFin].sort().forEach(o => selOrFin.add(new Option(o, o)));
+        }
+        const selDsFin = document.getElementById('filter-fin-destino');
+        if (selDsFin && selDsFin.options.length <= 1) {
+            [...allDsFin].sort().forEach(d => selDsFin.add(new Option(d, d)));
+        }
+
+        // Prefill rango: último 3 meses
+        const hoy = new Date();
+        const desde = new Date(hoy); desde.setMonth(desde.getMonth() - 3);
+        const pad = n => String(n).padStart(2, '0');
+        const fmtD = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        if (!document.getElementById('fin-desde').value) document.getElementById('fin-desde').value = fmtD(desde);
+        if (!document.getElementById('fin-hasta').value) document.getElementById('fin-hasta').value = fmtD(hoy);
+
+        // Si ya hay datos en localData.finanzas, renderizar directo sin fetch
+        if (localData.finanzas?.solicitudes?.length > 0) {
+            await renderFinanzasVisual();
+        }
+        // Si no, mostrar estado vacío para que el usuario presione Aplicar
+    }
+
+    // ── Aplica filtros y llama a la API si es necesario ──────────────────────────
+    window.aplicarFiltrosFinanzas = async () => {
+        const finLoading = document.getElementById('fin-loading');
+        const finEmpty = document.getElementById('fin-empty');
+
+        finLoading.classList.remove('hidden');
+        finEmpty.classList.add('hidden');
+        document.getElementById('fin-kpis').classList.add('hidden');
+        document.getElementById('fin-charts').classList.add('hidden');
+        document.getElementById('fin-tabla').classList.add('hidden');
+
+        // Fetch datos financieros si no los tenemos o si el usuario fuerza refresh
+        if (!localData.finanzas?.solicitudes) {
+            const res = await apiCall('getFinanzas');
+            if (res.status !== 'success') {
+                finLoading.classList.add('hidden');
+                Toast.fire({ text: res.message || 'Error cargando datos.', icon: 'error' });
+                return;
+            }
+            localData.finanzas = res.data;
+        }
+
+        await renderFinanzasVisual();
+        finLoading.classList.add('hidden');
+    };
+
+    // ── Motor de renderizado: KPIs + gráficas + tabla ────────────────────────────
+    async function renderFinanzasVisual() {
+        const desde = document.getElementById('fin-desde')?.value || '';
+        const hasta = document.getElementById('fin-hasta')?.value || '';
+        const empFilter = document.getElementById('filter-fin-empresa')?.value || '';
+        const ejFilter = document.getElementById('filter-fin-ejecutivo')?.value || '';
+        const estFilter = document.getElementById('filter-fin-estado')?.value || '';
+        const tipoFilter = document.getElementById('filter-fin-tipo')?.value || '';
+        const evtFilter = document.getElementById('filter-fin-evento')?.value || '';
+        const orFilter = document.getElementById('filter-fin-origen')?.value || '';
+        const dsFilter = document.getElementById('filter-fin-destino')?.value || '';
+
+        let tickets = (localData.finanzas?.solicitudes || []).slice();
+
+        // Filtros de tickets
+        if (empFilter) tickets = tickets.filter(t => (t[10] || '') === empFilter);
+        if (ejFilter) tickets = tickets.filter(t => String(t[8] || '').trim() === ejFilter);
+        if (estFilter) tickets = tickets.filter(t => t[4] === estFilter);
+        if (evtFilter) tickets = tickets.filter(t => String(t[9] || '').trim() === evtFilter);
+        if (desde) tickets = tickets.filter(t => { const d = parseDateObj(t[1]); return !isNaN(d) && d >= new Date(desde); });
+        if (hasta) tickets = tickets.filter(t => { const d = parseDateObj(t[1]); return !isNaN(d) && d <= new Date(hasta + 'T23:59:59'); });
+
+        // Filtro de origen/destino a nivel de ticket (si algún servicio del ticket coincide)
+        if (orFilter || dsFilter) {
+            tickets = tickets.filter(t => {
+                const svcs = (localData.serviciosResumen || []).filter(s => s[0] === t[0]);
+                const orOk = !orFilter || svcs.some(s => String(s[2] || '').trim().toUpperCase() === orFilter);
+                const dsOk = !dsFilter || svcs.some(s => String(s[3] || '').trim().toUpperCase() === dsFilter);
+                return orOk && dsOk;
+            });
+        }
+
+        // Construir filas de detalle por opción
+        const filas = [];
+        tickets.forEach(t => {
+            const opts = (localData.finanzas?.opciones || []).filter(o =>
+                o[0] === t[0] && ['Autorizada', 'Comprado', 'Extra'].includes(o[6])
+            );
+            opts.forEach(o => {
+                const svcs = (localData.serviciosResumen || []).filter(s => s[0] === t[0]);
+                const svc = svcs.find(s => s[7] === o[7]) || svcs[0] || [];
+                const tipoSvc = o[6] === 'Extra' ? 'Extra' : String(svc[1] || 'Otro');
+                if (tipoFilter && tipoSvc !== tipoFilter) return;
+
+                const origenSvc = String(svc[2] || '').trim();
+                const destinoSvc = String(svc[3] || '').trim();
+
+                const facturacion = Number(o[5] || 0);
+                const costoNeto = Number(o[9] || 0);
+                const utilidad = facturacion - costoNeto;
+                const margen = facturacion > 0 ? utilidad / facturacion : 0;
+                const fecha = parseDateObj(t[1]);
+
+                filas.push({
+                    id: t[0],
+                    fecha,
+                    fechaStr: isNaN(fecha) ? '' : fecha.toLocaleDateString('es-MX'),
+                    empresa: t[3],
+                    ejecutivo: String(t[8] || '—'),
+                    tipo: tipoSvc,
+                    origen: origenSvc,
+                    destino: destinoSvc,
+                    facturacion,
+                    costoNeto,
+                    utilidad,
+                    margen
+                });
+            });
+        });
+
+        if (filas.length === 0) {
+            document.getElementById('fin-empty').classList.remove('hidden');
+            document.getElementById('fin-kpis').classList.add('hidden');
+            document.getElementById('fin-charts').classList.add('hidden');
+            document.getElementById('fin-tabla').classList.add('hidden');
+            return;
+        }
+
+        document.getElementById('fin-empty').classList.add('hidden');
+
+        // ── KPIs ────────────────────────────────────────────────────────────────────
+        const totalFact = filas.reduce((a, f) => a + f.facturacion, 0);
+        const totalCosto = filas.reduce((a, f) => a + f.costoNeto, 0);
+        const totalUtil = totalFact - totalCosto;
+        const margenProm = totalFact > 0 ? (totalUtil / totalFact * 100) : 0;
+        const nTickets = new Set(filas.map(f => f.id)).size;
+        const ticketProm = nTickets > 0 ? totalFact / nTickets : 0;
+
+        const kpiEl = document.getElementById('fin-kpis');
+        const _isSuper = session.role === 'super';
+        const kpiCards = [
+            ['💰 Facturación', formatCurrency(totalFact), 'border-indipris-main'],
+            _isSuper ? ['🏷 Costo Neto', formatCurrency(totalCosto), 'border-slate-400'] : null,
+            _isSuper ? ['📈 Utilidad', formatCurrency(totalUtil), totalUtil >= 0 ? 'border-emerald-500' : 'border-red-500'] : null,
+            _isSuper ? ['% Margen', margenProm.toFixed(1) + '%', 'border-blue-400'] : null,
+            ['🎫 Tickets', nTickets, 'border-amber-400'],
+            ['Ticket Prom.', formatCurrency(ticketProm), 'border-violet-400']
+        ].filter(Boolean);
+        kpiEl.innerHTML = kpiCards.map(([label, val, borde]) =>
+            `<div class="bg-white rounded-2xl card-shadow border-l-4 ${borde} p-4">
+       <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">${label}</p>
+       <p class="text-xl font-black text-slate-800 mt-1">${val}</p>
+     </div>`
+        ).join('');
+        kpiEl.classList.remove('hidden');
+
+        // ── Gráficas (lazy Chart.js) ─────────────────────────────────────────────
+        await loadChartJS();
+
+        // Destruir instancias previas
+        Object.values(finChartInstances).forEach(c => { try { c.destroy(); } catch (e) { } });
+        finChartInstances = {};
+
+        const COLORES = ['#e91e8c', '#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6'];
+
+        // 1. Barras por mes (facturación / costo / utilidad)
+        const porMes = {};
+        filas.forEach(f => {
+            if (isNaN(f.fecha)) return;
+            const k = `${f.fecha.getFullYear()}-${String(f.fecha.getMonth() + 1).padStart(2, '0')}`;
+            if (!porMes[k]) porMes[k] = { fact: 0, costo: 0 };
+            porMes[k].fact += f.facturacion;
+            porMes[k].costo += f.costoNeto;
+        });
+        const meses = Object.keys(porMes).sort();
+        const labMes = meses.map(m => { const [y, mo] = m.split('-'); return MESES_NOMBRES[+mo - 1] + ' ' + y.slice(2); });
+        finChartInstances.mensual = new Chart(document.getElementById('chart-mensual'), {
+            type: 'bar',
+            data: {
+                labels: labMes,
+                datasets: [
+                    { label: 'Facturación', data: meses.map(m => porMes[m].fact), backgroundColor: '#e91e8c88', borderColor: '#e91e8c', borderWidth: 2 },
+                    ...(_isSuper ? [
+                        { label: 'Costo Neto', data: meses.map(m => porMes[m].costo), backgroundColor: '#6366f188', borderColor: '#6366f1', borderWidth: 2 },
+                        { label: 'Utilidad', data: meses.map(m => porMes[m].fact - porMes[m].costo), backgroundColor: '#10b98188', borderColor: '#10b981', borderWidth: 2 }
+                    ] : [])
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { font: { size: 10, weight: 'bold' } } } }, scales: { y: { ticks: { callback: v => '$' + Math.round(v / 1000) + 'k' } } } }
+        });
+
+        // 2. Dona por tipo de servicio
+        const porTipo = {};
+        filas.forEach(f => { porTipo[f.tipo] = (porTipo[f.tipo] || 0) + f.facturacion; });
+        const tiposKeys = Object.keys(porTipo);
+        finChartInstances.tipo = new Chart(document.getElementById('chart-tipo'), {
+            type: 'doughnut',
+            data: { labels: tiposKeys, datasets: [{ data: tiposKeys.map(k => porTipo[k]), backgroundColor: COLORES.slice(0, tiposKeys.length), borderWidth: 2 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10, weight: 'bold' } } } } }
+        });
+
+        // 3. Barras horizontales top empresas
+        const porEmp = {};
+        filas.forEach(f => { porEmp[f.empresa] = (porEmp[f.empresa] || 0) + f.facturacion; });
+        const empSort = Object.entries(porEmp).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        finChartInstances.empresas = new Chart(document.getElementById('chart-empresas'), {
+            type: 'bar',
+            data: { labels: empSort.map(e => e[0]), datasets: [{ label: 'Facturación', data: empSort.map(e => e[1]), backgroundColor: COLORES, borderWidth: 0 }] },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => '$' + Math.round(v / 1000) + 'k' } } } }
+        });
+
+        // 4. Línea acumulada por mes
+        let acum = 0;
+        const acumData = meses.map(m => { acum += porMes[m].fact; return acum; });
+        finChartInstances.acumulado = new Chart(document.getElementById('chart-acumulado'), {
+            type: 'line',
+            data: { labels: labMes, datasets: [{ label: 'Acumulado', data: acumData, borderColor: '#e91e8c', backgroundColor: '#e91e8c22', fill: true, tension: 0.4, pointRadius: 4 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => '$' + Math.round(v / 1000) + 'k' } } } }
+        });
+
+        document.getElementById('fin-charts').classList.remove('hidden');
+
+        // ── Tabla de detalle ────────────────────────────────────────────────────────
+        finDatosActuales = filas;
+        renderTablaFinanzas();
+        document.getElementById('fin-tabla').classList.remove('hidden');
+    }
+
+    function renderTablaFinanzas() {
+        const d = [...finDatosActuales].sort((a, b) => {
+            const av = a[finSortKey], bv = b[finSortKey];
+            if (av instanceof Date) return finSortDir * (av - bv);
+            if (typeof av === 'number') return finSortDir * (av - bv);
+            return finSortDir * String(av || '').localeCompare(String(bv || ''));
+        });
+
+        document.getElementById('fin-tabla-count').innerText = d.length + ' registros';
+
+        const tipoIcon = { 'VUELO': '✈️', 'HOTEL': '🏨', 'BUS': '🚌', 'Extra': '➕' };
+
+        const _isSuperFin = session.role === 'super';
+
+        // Ocultar/mostrar columnas de encabezado según rol
+        document.querySelectorAll('.fin-col-super').forEach(el => {
+            el.style.display = _isSuperFin ? '' : 'none';
+        });
+
+        document.getElementById('fin-tabla-body').innerHTML = d.map(f => {
+            const margenColor = f.margen > 0.2 ? 'text-emerald-600' : f.margen > 0 ? 'text-amber-600' : 'text-red-600';
+            return `<tr class="border-b border-slate-50 hover:bg-slate-50/40 transition cursor-pointer" onclick="openDetalles('${f.id}')">
+      <td class="px-5 py-3 font-mono text-[10px] text-slate-400 font-bold">${f.id}</td>
+      <td class="px-5 py-3 text-xs text-slate-500">${f.fechaStr}</td>
+      <td class="px-5 py-3 text-xs font-bold text-slate-700">${f.empresa}</td>
+      <td class="px-5 py-3 text-xs text-slate-500">${f.ejecutivo}</td>
+      <td class="px-5 py-3 text-xs">${tipoIcon[f.tipo] || ''} ${f.tipo}</td>
+      <td class="px-5 py-3 text-xs text-slate-500">${f.origen || '—'}</td>
+      <td class="px-5 py-3 text-xs text-slate-500">${f.destino || '—'}</td>
+      <td class="px-5 py-3 text-sm text-right font-black text-slate-800">${formatCurrency(f.facturacion)}</td>
+      ${_isSuperFin ? `<td class="px-5 py-3 text-xs text-right text-slate-500">${f.costoNeto > 0 ? formatCurrency(f.costoNeto) : '—'}</td>` : ''}
+      ${_isSuperFin ? `<td class="px-5 py-3 text-sm text-right font-black ${f.utilidad >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatCurrency(f.utilidad)}</td>` : ''}
+      ${_isSuperFin ? `<td class="px-5 py-3 text-xs text-right font-black ${margenColor}">${f.costoNeto > 0 ? (f.margen * 100).toFixed(1) + '%' : '—'}</td>` : ''}
+    </tr>`;
+        }).join('');
+    }
+
+    window.sortFinanzas = (key) => {
+        if (finSortKey === key) finSortDir *= -1;
+        else { finSortKey = key; finSortDir = -1; }
+        renderTablaFinanzas();
+    };
+
+    window.exportarCSVFinanzas = () => {
+        if (!finDatosActuales.length) return Toast.fire({ text: 'Primero aplica los filtros.', icon: 'warning' });
+        const esc = v => { const s = String(v === null || v === undefined ? '' : v); return s.includes(',') ? '"' + s.replace(/"/g, '""') + '"' : s; };
+        const _isSuperCSV = session.role === 'super';
+        const enc = _isSuperCSV
+            ? ['Ticket', 'Fecha', 'Empresa', 'Ejecutivo', 'Tipo', 'Origen', 'Destino', 'Facturación', 'Costo Neto', 'Utilidad', 'Margen %']
+            : ['Ticket', 'Fecha', 'Empresa', 'Ejecutivo', 'Tipo', 'Origen', 'Destino', 'Facturación'];
+        const filas = finDatosActuales.map(f => {
+            const base = [f.id, f.fechaStr, f.empresa, f.ejecutivo, f.tipo, f.origen || '', f.destino || '', f.facturacion.toFixed(2)];
+            if (_isSuperCSV) base.push(f.costoNeto.toFixed(2), f.utilidad.toFixed(2), f.costoNeto > 0 ? (f.margen * 100).toFixed(1) + '%' : '');
+            return base.map(esc).join(',');
+        });
+        const csv = [enc.join(','), ...filas].join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `finanzas_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        const msgCSVFin = 'CSV descargado (' + finDatosActuales.length + ' lineas)';
+        Toast.fire({ text: msgCSVFin, icon: 'success', timer: 2000, showConfirmButton: false, toast: true, position: 'bottom-end' });
+    };
+
+    window.toggleFinMonth = (v) => {
+        document.querySelectorAll(`.item-fin-mes-${v}`).forEach(r => { r.style.display = r.style.display === 'none' ? '' : 'none'; });
+        const icon = document.getElementById(`icon-fin-${v}`);
+        if (icon) { icon.style.transform = icon.style.transform === 'rotate(-90deg)' ? 'rotate(0deg)' : 'rotate(-90deg)'; }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DETALLES DEL TICKET
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.openDetalles = async (idTicket) => {
+        showLoading("Descargando ticket...");
+        const res = await apiCall('getTicketDetails', { idTicket });
+        hideLoading();
+        if (res.status !== "success") { Toast.fire({ text: res.message, icon: "error" }); return; }
+
+        idTicketEnFoco = idTicket;
+        const { ticket: t, servicios: svcs, pasajeros: paxs, opciones: opts } = res.data;
+        localData.ticketEnFoco = res.data;
+
+        const estado = t[4];
+        document.getElementById('det-titulo').innerText = idTicket;
+        document.getElementById('det-empresa').innerText = `${t[3]} (Solicito: ${t[2]})`;
+
+        let notasTexto = String(t[5] || '').trim();
+        if (estado === 'Cancelado' && t[7]) notasTexto += (notasTexto ? '<br><br>' : '') + '<span class="text-red-600 font-black">MOTIVO DE CANCELACION:</span> ' + t[7];
+        const notasContainer = document.getElementById('det-notas-container');
+        if (notasTexto) {
+            document.getElementById('det-notas').innerHTML = notasTexto;
+            notasContainer.classList.remove('hidden');
+        } else {
+            notasContainer.classList.add('hidden');
+        }
+
+        // ── Campo Evento (t[9] = col J del sheet) ──────────────────────────────────
+        const eventoActual = String(t[9] || '').trim();
+        // Show evento inline in header
+        const eventoInline = document.getElementById('det-evento-inline');
+        if (eventoInline) {
+            if (eventoActual) {
+                eventoInline.textContent = eventoActual;
+                eventoInline.classList.remove('hidden');
+            } else {
+                eventoInline.classList.add('hidden');
+            }
+        }
+        const detEvento = document.getElementById('det-evento-container');
+        if (detEvento && (session.role === 'indipris' || session.role === 'super')) {
+            detEvento.classList.remove('hidden');
+            detEvento.innerHTML = `
+      <div class="flex items-center gap-2 bg-white rounded-lg border border-slate-200 p-2">
+        <span class="text-[8px] font-black text-pink-600 uppercase shrink-0">Evento:</span>
+        <input type="text" id="det-evento-input" list="lista-eventos"
+          value="${eventoActual}"
+          placeholder="Sin evento"
+          class="flex-1 min-w-[120px] border-b border-slate-200 py-0.5 font-bold text-slate-700 outline-none focus:border-pink-500 bg-transparent text-xs">
+        <button onclick="guardarEventoTicket()" id="btn-guardar-evento"
+          class="shrink-0 bg-pink-50 text-pink-600 border border-pink-200 px-2 py-1 rounded text-[8px] font-black hover:bg-pink-100 transition uppercase">
+          Guardar
+        </button>
+      </div>`;
+        }
+
+        const color = getBadgeColor(estado);
+        const badge = document.getElementById('det-badge-estado');
+        badge.className = `status-badge ${color}`;
+        badge.innerText = estado;
+
+        const _esAgente = (session.role === 'indipris' || session.role === 'super');
+
+        // ── SERVICIOS ──────────────────────────────────────────────────────────────
+        if (_esAgente && svcs.length > 0) {
+            // Vista tabla compacta para agentes
+            document.getElementById('det-servicios').innerHTML = `
+      <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm">
+        <table class="w-full text-xs border-collapse min-w-[500px]">
+          <thead>
+            <tr class="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+              <th class="px-3 py-2 text-left">Tipo</th>
+              <th class="px-3 py-2 text-left">Ruta</th>
+              <th class="px-3 py-2 text-left">Fecha Ida</th>
+              <th class="px-3 py-2 text-left">Fecha Reg.</th>
+              <th class="px-3 py-2 text-left">Horario / Detalles</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${svcs.map(s => `<tr class="hover:bg-slate-50">
+              <td class="px-3 py-2 font-black text-slate-700">${s[1]}</td>
+              <td class="px-3 py-2 font-bold text-slate-800">${s[2]} → ${s[3]}</td>
+              <td class="px-3 py-2 text-slate-600">${formatDateHuman(s[4])}</td>
+              <td class="px-3 py-2 text-slate-600">${formatDateHuman(s[5])}</td>
+              <td class="px-3 py-2 text-slate-500 text-[10px]">${s[6] || '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+        } else {
+            // Vista tarjetas para admin/viajero
+            document.getElementById('det-servicios').innerHTML = svcs.map(s => `
+      <div class="p-4 bg-white border border-slate-200 rounded-xl text-sm shadow-sm">
+        <p class="font-black text-slate-800 mb-1">${s[1]} | ${s[2]} → ${s[3]}</p>
+        <p class="text-xs text-slate-500 font-bold">Fechas: ${formatDateHuman(s[4])} al ${formatDateHuman(s[5])}</p>
+        <p class="text-[9px] text-slate-400 uppercase font-bold mt-2 leading-tight">${s[6] || ''}</p>
+      </div>`).join('');
+        }
+
+        // ── PASAJEROS ──────────────────────────────────────────────────────────────
+        if (_esAgente && paxs.length > 0) {
+            // Detectar si hay vuelos para mostrar columnas de asiento/equipaje
+            const tieneVuelo = svcs.some(s => s[1] === 'VUELO');
+
+            document.getElementById('det-pasajeros').innerHTML = `
+      <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm">
+        <table class="w-full text-xs border-collapse min-w-[600px]">
+          <thead>
+            <tr class="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+              <th class="px-3 py-2 text-left">#</th>
+              <th class="px-3 py-2 text-left">Nombre Completo</th>
+              <th class="px-3 py-2 text-left">Nacimiento</th>
+              <th class="px-3 py-2 text-left">Viajero Frecuente</th>
+              ${tieneVuelo ? '<th class="px-3 py-2 text-left">Asiento</th><th class="px-3 py-2 text-left">Equipaje</th>' : ''}
+              <th class="px-3 py-2 text-center">ID</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${paxs.map((p, idx) => {
+                const prefs = String(p[3] || '').trim();
+                const equip = String(p[4] || '').trim();
+                // Extraer asiento y equipaje de las preferencias
+                let asiento = '—';
+                let equipaje = '—';
+                if (prefs) {
+                    const mAs = prefs.match(/(?:Asiento|Vuelo)[:\s]*(\w+)/i);
+                    if (mAs) asiento = mAs[1];
+                    else if (['Ventana', 'Pasillo', 'Indiferente', 'Sin preferencia'].some(v => prefs.includes(v))) asiento = prefs.split('|')[0].trim();
+                }
+                if (equip) {
+                    equipaje = equip.replace(/Maleta[:\s]*/i, '').replace(/Equp[:\s]*/i, '').trim() || equip;
+                }
+                const idLink = p[5]
+                    ? `<a href="${p[5]}" target="_blank" class="text-[9px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded hover:bg-blue-100">VER</a>`
+                    : '<span class="text-[9px] text-slate-400">—</span>';
+
+                return `<tr class="hover:bg-slate-50">
+                <td class="px-3 py-2 text-slate-400 font-bold">${idx + 1}</td>
+                <td class="px-3 py-2 font-black text-slate-800">${p[1]}</td>
+                <td class="px-3 py-2 text-slate-600 text-[10px]">${formatDateHuman(p[2])}</td>
+                <td class="px-3 py-2 text-slate-600 text-[10px] font-bold">${p[6] || '—'}</td>
+                ${tieneVuelo ? `<td class="px-3 py-2 text-slate-600">${asiento}</td><td class="px-3 py-2 text-slate-600 text-[10px]">${equipaje}</td>` : ''}
+                <td class="px-3 py-2 text-center">${idLink}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p class="text-[9px] text-slate-400 font-bold mt-2 text-right">${paxs.length} pasajero${paxs.length > 1 ? 's' : ''}</p>`;
+        } else {
+            // Vista tarjetas para admin/viajero
+            document.getElementById('det-pasajeros').innerHTML = paxs.map(p => `
+      <div class="p-4 bg-white border border-slate-200 rounded-xl text-sm flex justify-between items-center shadow-sm">
+        <div>
+          <p class="font-black text-slate-800 mb-1">${p[1]}</p>
+          <p class="text-[10px] text-slate-500 font-bold uppercase">Nacimiento: ${formatDateHuman(p[2])}</p>
+          <p class="text-[10px] text-slate-500 font-bold uppercase mt-1">Prefs: ${p[3]} | Equp: ${p[4]}</p>
+          ${p[6] ? `<p class="text-[10px] text-pink-600 font-bold mt-1">Viajero Frecuente: ${p[6]}</p>` : ''}
+        </div>
+        ${p[5] ? `<a href="${p[5]}" target="_blank" class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg hover:bg-blue-100 transition">VER ID</a>` : '<span class="text-[10px] font-bold text-slate-400 border border-slate-200 bg-slate-100 px-3 py-2 rounded-lg">Sin ID</span>'}
+      </div>`).join('');
+        }
+
+        // Opciones de cotización
+        seleccionesAdmin = {};
+        const divOpciones = document.getElementById('seccion-opciones-mostrar');
+        const divOpcionesLst = document.getElementById('auth-options-list');
+
+        const _politica = localData.ticketEnFoco.politica;
+        const _aplicaIVA = _politica ? _politica.aplicaIVA !== false : true;
+
+        if (opts.length > 0) {
+            divOpciones.classList.remove('hidden');
+
+            // Parse option desc HTML to extract structured data
+            const parseOptDesc = (desc) => {
+                const d = String(desc || '');
+                const get = (re) => { const m = d.match(re); return m ? m[1].trim() : ''; };
+                return {
+                    tramo: d.includes('IDA</p>') ? 'IDA' : d.includes('REGRESO</p>') ? 'REGRESO' : '',
+                    aerolinea: get(/Aerolinea:<\/b>\s*([^<]+)/i),
+                    ruta: get(/Ruta:<\/b>\s*([^<]+)/i),
+                    fecha: get(/Fecha:<\/b>\s*([^|<]+)/i),
+                    horario: get(/Horario:<\/b>\s*([^<]+)/i),
+                    vuelo: get(/Vuelo:<\/b>\s*([^|<]+)/i),
+                    pnr: get(/PNR:<\/b>\s*(?:<[^>]+>)*\s*([^<]+)/i)
+                };
+            };
+
+            // Group by svcId (redondos stay together)
+            const grouped = {};
+            opts.forEach(o => {
+                if (!['Propuesta', 'Autorizada', 'Comprado', 'Rechazada', 'Descartada'].includes(o[6])) return;
+                const svcId = o[7] || 'global';
+                if (!grouped[svcId]) grouped[svcId] = [];
+                grouped[svcId].push(o);
+            });
+
+            const svcsMap = {};
+            svcs.forEach(s => { svcsMap[s[7] || s[1]] = s; });
+
+            let html = '';
+            for (const svcId in grouped) {
+                const svcOpts = grouped[svcId];
+                const svc = svcsMap[svcId] || svcs[0];
+                const svcLabel = svc ? svc[1] + ' · ' + svc[2] + ' → ' + svc[3] : 'Servicio';
+
+                const idas = svcOpts.filter(o => parseOptDesc(o[2]).tramo === 'IDA');
+                const regs = svcOpts.filter(o => parseOptDesc(o[2]).tramo === 'REGRESO');
+                const singles = svcOpts.filter(o => !parseOptDesc(o[2]).tramo);
+                const esRedondo = idas.length > 0 && regs.length > 0;
+
+                html += '<div class="mb-2">';
+                html += '<div class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">' + svcLabel + (esRedondo ? ' <span class="text-[7px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">REDONDO</span>' : '') + '</div>';
+                html += '<div class="space-y-1.5">';
+
+                if (esRedondo) {
+                    const maxPairs = Math.max(idas.length, regs.length);
+                    for (let pi = 0; pi < maxPairs; pi++) {
+                        const oIda = idas[pi];
+                        const oReg = regs[pi];
+                        const pairIds = [oIda?.[1], oReg?.[1]].filter(Boolean).join(',');
+                        const totPair = (oIda ? Number(oIda[5] || 0) : 0) + (oReg ? Number(oReg[5] || 0) : 0);
+                        const anyAprobado = (oIda && (oIda[6] === 'Autorizada' || oIda[6] === 'Comprado')) || (oReg && (oReg[6] === 'Autorizada' || oReg[6] === 'Comprado'));
+                        const anyRechazado = (oIda && oIda[6] === 'Rechazada') || (oReg && oReg[6] === 'Rechazada');
+                        const isSelectable = estado === 'Cotizado' && !anyRechazado && !anyAprobado && (session.role === 'admin' || session.role === 'super');
+                        const pairBorder = anyAprobado ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-200'
+                            : anyRechazado ? 'border-red-200 bg-red-50/30 opacity-40'
+                                : isSelectable ? 'border-slate-200 bg-white hover:border-pink-400 cursor-pointer' : 'border-slate-200 bg-white';
+
+                        var feeI = oIda ? Number(oIda[4] || 0) : 0, feeR = oReg ? Number(oReg[4] || 0) : 0;
+                        var costoI = oIda ? Number(oIda[3] || 0) : 0, costoR = oReg ? Number(oReg[3] || 0) : 0;
+                        var feePair = feeI + feeR, costoPair = costoI + costoR;
+                        var subPair = costoPair + feePair;
+                        var ivaPair = _aplicaIVA ? subPair * 0.16 : 0;
+                        var totalConIva = subPair + ivaPair;
+
+                        // Card: flex row - flights left, price right
+                        html += '<div id="card-' + pairIds + '" class="border ' + pairBorder + ' rounded-lg relative transition opt-card flex flex-col md:flex-row" ' + (isSelectable ? 'onclick="selectAdminOption(\'' + svcId + '\',\'' + pairIds + '\')"' : '') + '>';
+                        html += '<div class="hidden check-icon absolute top-1.5 left-1.5 w-5 h-5 bg-pink-600 text-white rounded-full flex items-center justify-center text-[9px] font-black z-10">✓</div>';
+
+                        // Left: IDA + REG side by side
+                        html += '<div class="flex-1 flex flex-col md:flex-row">';
+                        if (oIda) {
+                            const pi2 = parseOptDesc(oIda[2]);
+                            html += '<div class="flex-1 px-2.5 py-1.5 ' + (oReg ? 'md:border-r border-b md:border-b-0 border-slate-100' : '') + '">';
+                            html += '<div class="text-[7px] font-black text-emerald-600 mb-0.5">→ IDA</div>';
+                            html += '<div class="text-[11px] font-black text-slate-800">' + pi2.aerolinea + ' <span class="font-mono text-slate-400 text-[9px]">' + pi2.vuelo + '</span></div>';
+                            html += '<div class="text-[10px] text-slate-500">' + (pi2.fecha || '').trim() + ' · ' + pi2.horario + '</div>';
+                            html += '<div class="font-mono text-[9px] ' + (pi2.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + pi2.pnr + '</div>';
+                            html += '</div>';
+                        }
+                        if (oReg) {
+                            const pr = parseOptDesc(oReg[2]);
+                            html += '<div class="flex-1 px-2.5 py-1.5">';
+                            html += '<div class="text-[7px] font-black text-indigo-600 mb-0.5">← REG</div>';
+                            html += '<div class="text-[11px] font-black text-slate-800">' + pr.aerolinea + ' <span class="font-mono text-slate-400 text-[9px]">' + pr.vuelo + '</span></div>';
+                            html += '<div class="text-[10px] text-slate-500">' + (pr.fecha || '').trim() + ' · ' + pr.horario + '</div>';
+                            html += '<div class="font-mono text-[9px] ' + (pr.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + pr.pnr + '</div>';
+                            html += '</div>';
+                        }
+                        html += '</div>';
+
+                        // Right: price block
+                        html += '<div class="bg-slate-50 px-3 py-2 md:py-1.5 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-slate-100 md:min-w-[120px] shrink-0 gap-1">';
+                        html += '<div class="text-[8px] text-slate-400 font-bold">Sub ' + formatCurrency(subPair) + '</div>';
+                        html += '<div class="text-[8px] text-slate-400 font-bold">Fee ' + formatCurrency(feePair) + '</div>';
+                        if (_aplicaIVA) html += '<div class="text-[8px] text-slate-400 font-bold">IVA ' + formatCurrency(ivaPair) + '</div>';
+                        html += '<div class="font-black ' + (anyAprobado ? 'text-emerald-600' : 'text-slate-800') + ' text-base md:text-sm mt-0.5">' + formatCurrency(totalConIva) + '</div>';
+                        html += '</div></div>';
+                    }
+                } else {
+                    const allOpts = [...singles, ...idas, ...regs];
+                    allOpts.forEach(o => {
+                        const p = parseOptDesc(o[2]);
+                        const c = Number(o[3] || 0), f = Number(o[4] || 0), tot = Number(o[5] || 0);
+                        const isRechazado = o[6] === 'Rechazada' || o[6] === 'Descartada';
+                        const isAprobado = o[6] === 'Autorizada' || o[6] === 'Comprado';
+                        const isSelectable = estado === 'Cotizado' && o[6] === 'Propuesta' && (session.role === 'admin' || session.role === 'super');
+                        const canReject = o[6] === 'Propuesta' && estado === 'Cotizado' && (session.role === 'admin' || session.role === 'super');
+                        const cardBorder = isAprobado ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200'
+                            : isRechazado ? 'border-red-200 bg-red-50/30 opacity-40'
+                                : isSelectable ? 'border-slate-200 bg-white hover:border-pink-400 cursor-pointer' : 'border-slate-200 bg-white';
+                        const statusBadge = isAprobado ? '<span class="text-[8px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">✓ ' + o[6] + '</span>'
+                            : isRechazado ? '<span class="text-[8px] font-black bg-red-100 text-red-400 px-2 py-0.5 rounded-full">' + o[6] + '</span>' : '';
+                        const confidencial = (session.role === 'super' && o[9] && Number(o[9]) > 0) ? '<span class="text-[8px] text-red-500 font-bold ml-2">[Prov: ' + formatCurrency(Number(o[9])) + ']</span>' : '';
+
+                        var subSingle = c + f;
+                        var ivaSingle = _aplicaIVA ? subSingle * 0.16 : 0;
+                        var totSingle = subSingle + ivaSingle;
+
+                        html += '<div id="card-' + o[1] + '" class="border ' + cardBorder + ' rounded-lg relative transition opt-card flex flex-col md:flex-row" ' + (isSelectable ? 'onclick="selectAdminOption(\'' + svcId + '\',\'' + o[1] + '\')"' : '') + '>';
+                        html += '<div class="hidden check-icon absolute top-1.5 left-1.5 w-5 h-5 bg-pink-600 text-white rounded-full flex items-center justify-center text-[9px] font-black z-10">✓</div>';
+                        // Left: flight info
+                        html += '<div class="flex-1 px-2.5 py-1.5">';
+                        if (p.tramo) html += '<span class="text-[7px] font-black ' + (p.tramo === 'IDA' ? 'text-emerald-600' : 'text-indigo-600') + '">' + (p.tramo === 'IDA' ? '→ IDA' : '← REG') + '</span> ';
+                        html += '<span class="text-[11px] font-black text-slate-800">' + (p.aerolinea || o[2].replace(/<[^>]+>/g, ' ').substring(0, 30)) + '</span>';
+                        if (p.vuelo) html += ' <span class="text-slate-400 font-mono text-[9px]">' + p.vuelo + '</span>';
+                        html += '<div class="text-[10px] text-slate-500">';
+                        if (p.horario) html += p.horario + ' ';
+                        if (p.pnr) html += '<span class="font-mono ' + (p.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + p.pnr + '</span> ';
+                        html += statusBadge + '</div></div>';
+                        // Right: price
+                        html += '<div class="bg-slate-50 px-3 py-2 md:py-1.5 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-slate-100 md:min-w-[100px] shrink-0 gap-1">';
+                        html += '<div class="text-[8px] text-slate-400">Sub ' + formatCurrency(subSingle) + '</div>';
+                        html += '<div class="text-[8px] text-slate-400">Fee ' + formatCurrency(f) + '</div>';
+                        if (_aplicaIVA) html += '<div class="text-[8px] text-slate-400">IVA ' + formatCurrency(ivaSingle) + '</div>';
+                        html += '<div class="font-black ' + (isAprobado ? 'text-emerald-600' : 'text-slate-800') + ' text-base md:text-sm">' + formatCurrency(totSingle) + '</div>';
+                        html += confidencial + '</div>';
+                        if (canReject) html += '<button onclick="event.stopPropagation();rechazarOpcionIndividual(\'' + o[1] + '\')" class="absolute top-1 right-1 text-[7px] font-black text-red-300 hover:text-red-600 transition">✕</button>';
+                        html += '</div>';
+                    });
+                }
+                html += '</div></div>';
+            }
+
+
+            const hayExtras = opts.some(o => o[6] === 'Extra');
+            const hayPropuestas = opts.some(o => o[6] === 'Propuesta');
+
+            if ((session.role === 'admin' || session.role === 'super') && estado === 'Cotizado' && hayPropuestas) {
+
+                // Show hint text inline and footer bar
+                const hintEl = document.getElementById('det-opciones-hint');
+                if (hintEl) hintEl.classList.remove('hidden');
+                document.getElementById('det-float-autorizar').classList.remove('hidden');
+                const btnRechFooter = document.getElementById('btn-rechazar-footer');
+                if (btnRechFooter) btnRechFooter.classList.remove('hidden');
+            } else {
+
+            }
+
+            // Sección de extras — siempre al final si existen
+            if (hayExtras) {
+                const extras = opts.filter(o => o[6] === 'Extra');
+                let extrasTotal = 0;
+                html += `<div class="mt-6 border-t-2 border-amber-100 pt-6">
+        <h5 class="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-3"> Cargos Extra</h5>
+        <div class="space-y-3">`;
+                extras.forEach(ex => {
+                    const tot = Number(ex[5] || 0);
+                    extrasTotal += tot;
+                    const canDelete = session.role === 'indipris' || session.role === 'super';
+                    html += `<div class="p-4 border border-amber-200 bg-amber-50/40 rounded-xl flex justify-between items-center">
+          <div class="text-slate-700 text-sm leading-relaxed flex-1">${ex[2]}</div>
+          <div class="flex items-center gap-3 shrink-0 ml-3">
+            <span class="font-black text-amber-800 text-sm">${formatCurrency(tot)}</span>
+            ${canDelete ? `<button onclick="eliminarExtra('${ex[1]}')" class="text-[8px] font-black text-red-400 hover:text-red-600 bg-red-50 border border-red-100 px-2 py-1 rounded-lg transition">✕</button>` : ''}
+          </div>
+        </div>`;
+                });
+                html += `</div>
+        <div class="mt-3 flex justify-end">
+          <span class="bg-amber-100 border border-amber-300 text-amber-800 font-black text-sm px-4 py-2 rounded-xl">
+            Total extras: ${formatCurrency(extrasTotal)}
+          </span>
+        </div>
+      </div>`;
+            }
+
+            // Gran Total — suma de opciones autorizadas/compradas + extras
+            const optsParaTotal = opts.filter(o => ['Autorizada', 'Comprado', 'Extra'].includes(o[6]));
+            if (optsParaTotal.length > 0) {
+                const granTotal = optsParaTotal.reduce((acc, o) => acc + Number(o[5] || 0), 0);
+                const totalBase = optsParaTotal.filter(o => o[6] !== 'Extra').reduce((acc, o) => acc + Number(o[5] || 0), 0);
+                const totalExtras = optsParaTotal.filter(o => o[6] === 'Extra').reduce((acc, o) => acc + Number(o[5] || 0), 0);
+                html += `<div class="mt-6 bg-slate-900 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+        <div class="space-y-1">
+          <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inversion Total del Ticket</p>
+          ${totalExtras > 0 ? `<p class="text-[10px] text-slate-400 font-bold">Servicios: ${formatCurrency(totalBase)} + Extras: ${formatCurrency(totalExtras)}</p>` : ''}
+        </div>
+        <p class="text-3xl font-black text-white">${formatCurrency(granTotal)}</p>
+      </div>`;
+            }
+
+            divOpcionesLst.innerHTML = html;
+        } else {
+            divOpciones.classList.add('hidden');
+        }
+
+        // Status changer (indipris/super only)
+        const statusChanger = document.getElementById('det-status-changer');
+        if (statusChanger) statusChanger.classList.toggle('hidden', session.role !== 'indipris' && session.role !== 'super');
+
+        // Sin opciones message
+        const sinOpciones = document.getElementById('det-sin-opciones');
+        if (sinOpciones) sinOpciones.classList.toggle('hidden', opts.length > 0);
+
+        // Acciones dropdown content
+        const accionesDD = document.getElementById('det-acciones-dropdown');
+        let acHtml = '';
+        const btnClass = "w-full text-left px-4 py-3 md:py-2.5 text-xs md:text-[10px] font-bold text-slate-600 hover:bg-pink-50 hover:text-pink-600 transition uppercase tracking-widest min-h-[44px] md:min-h-0 flex items-center";
+
+        if ((session.role === 'indipris' || session.role === 'super') && (estado === 'Pendiente' || estado === 'Cotizado' || estado === 'Autorizado' || estado === 'Comprado'))
+            acHtml += `<button onclick="openOptModal();closeAccDD()" class="${btnClass}">${estado === 'Pendiente' ? '📋 Subir Cotizaciones' : '📋 Modificar Cotizaciones'}</button>`;
+        if ((session.role === 'indipris' || session.role === 'super') && estado === 'Autorizado') {
+            acHtml += `<button onclick="ajustarPrecio();closeAccDD()" class="${btnClass}">💰 Ajustar Tarifas</button>`;
+            acHtml += `<button onclick="markPurchased();closeAccDD()" class="${btnClass}">✓ Marcar Comprado</button>`;
+        }
+        if (estado === 'Comprado' && (session.role === 'indipris' || session.role === 'super' || session.role === 'admin'))
+            acHtml += `<button onclick="generarItinerarioPDF();closeAccDD()" class="${btnClass}">📄 Descargar PDF</button>`;
+        if (estado === 'Comprado' && (session.role === 'indipris' || session.role === 'super'))
+            acHtml += `<button onclick="exportarALegacy();closeAccDD()" class="${btnClass}">📤 Enviar a Orbix</button>`;
+        if ((session.role === 'indipris' || session.role === 'super') && ['Pendiente', 'Cotizado', 'Autorizado', 'Comprado'].includes(estado))
+            acHtml += `<button onclick="openModalExtra();closeAccDD()" class="${btnClass}">➕ Agregar Extra</button>`;
+        if ((session.role === 'indipris' || session.role === 'super') && ['Pendiente', 'Cotizado', 'Autorizado'].includes(estado))
+            acHtml += `<button onclick="openEditTicket();closeAccDD()" class="${btnClass}">✏️ Editar Ticket</button>`;
+        if ((session.role === 'indipris' || session.role === 'super') && ['Pendiente', 'Cotizado', 'Autorizado', 'Comprado'].includes(estado))
+            acHtml += `<button onclick="reasignarEjecutivo();closeAccDD()" class="${btnClass}">🔄 Reasignar</button>`;
+        if ((session.role === 'admin' || session.role === 'indipris' || session.role === 'super') && (estado === 'Pendiente' || estado === 'Cotizado'))
+            acHtml += `<div class="border-t border-slate-100 mt-1 pt-1"><button onclick="cancelarTicket();closeAccDD()" class="w-full text-left px-4 py-3 text-[10px] font-bold text-red-500 hover:bg-red-50 transition uppercase tracking-widest">🚫 Cancelar Ticket</button></div>`;
+
+        if (accionesDD) accionesDD.innerHTML = acHtml || '<p class="px-4 py-3 text-[10px] text-slate-400">Sin acciones</p>';
+
+        // Hide floating authorize bar
+        document.getElementById('det-float-autorizar').classList.add('hidden');
+
+        document.getElementById('modal-detalles').classList.remove('hidden');
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ACCIONES SOBRE TICKET
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.cancelarTicket = async () => {
+        const { value: motivo } = await Toast.fire({ title: `Cancelar ${idTicketEnFoco}`, input: 'text', showCancelButton: true, confirmButtonText: 'Cancelar Ticket', cancelButtonText: 'Volver' });
+        if (!motivo?.trim()) return;
+        const { isConfirmed } = await Toast.fire({ title: '¿Confirmar cancelación?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cancelar', cancelButtonText: 'No' });
+        if (!isConfirmed) return;
+        closeModal('modal-detalles'); showLoading("Cancelando...");
+        const res = await apiCall('cancelRequest', { idTicket: idTicketEnFoco, motivo: motivo.trim() });
+        if (res.status === "success") { sendAppNotifications("CANCELADO", idTicketEnFoco, motivo.trim()).catch(() => { }); await refreshDashboardSilencioso(); }
+        else Toast.fire({ text: res.message, icon: "error" });
+        hideLoading();
+    };
+
+    window.selectAdminOption = (groupKey, optId) => {
+        if (seleccionesAdmin[groupKey] === optId) delete seleccionesAdmin[groupKey];
+        else seleccionesAdmin[groupKey] = optId;
+
+        document.querySelectorAll('.opt-card').forEach(el => {
+            el.classList.remove('border-pink-500', 'bg-pink-50');
+            el.querySelector('.check-icon')?.classList.add('hidden');
+        });
+        Object.values(seleccionesAdmin).forEach(id => {
+            const card = document.getElementById(`card-${id}`);
+            if (card) { card.classList.add('border-pink-500', 'bg-pink-50'); card.querySelector('.check-icon')?.classList.remove('hidden'); }
+        });
+
+        // Count distinct services with proposals (group by svcId, not tramo)
+        const gruposConPropuesta = new Set(
+            localData.ticketEnFoco.opciones
+                .filter(o => o[6] === 'Propuesta')
+                .map(o => o[7] || 'global')
+        );
+
+        const btn = document.getElementById('btn-autorizar-seleccion');
+        const floatBar = document.getElementById('det-float-autorizar');
+        const countEl = document.getElementById('det-seleccion-count');
+        const numSelected = Object.keys(seleccionesAdmin).length;
+
+        if (floatBar) floatBar.classList.toggle('hidden', numSelected === 0);
+        if (countEl) countEl.innerText = numSelected;
+
+        if (btn) {
+            const completo = gruposConPropuesta.size > 0 &&
+                [...gruposConPropuesta].every(k => seleccionesAdmin[k]);
+            btn.disabled = !completo;
+            btn.classList.toggle('opacity-50', !completo);
+            btn.classList.toggle('cursor-not-allowed', !completo);
+        }
+    };
+
+    window.authorizeSelection = async () => {
+        // 1. Obtenemos los valores seleccionados (pueden venir como "OPT-123" o "OPT-123,OPT-124")
+        const valoresElegidos = Object.values(seleccionesAdmin);
+        if (valoresElegidos.length === 0) return;
+
+        // 2. Aplanamos la lista: si un elemento tiene comas, lo separamos en IDs individuales
+        const elegidas = valoresElegidos.reduce((acc, current) => {
+            if (typeof current === 'string' && current.includes(',')) {
+                return acc.concat(current.split(',').map(id => id.trim()));
+            }
+            return acc.concat(current);
+        }, []);
+
+        const { isConfirmed } = await Toast.fire({
+            title: '¿Autorizar Selección?',
+            text: "El equipo Indipris procederá con la compra.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Autorizar',
+            cancelButtonText: 'Revisar'
+        });
+
+        if (!isConfirmed) return;
+
+        closeModal('modal-detalles');
+        showLoading("Autorizando...");
+
+        // CORRECCIÓN: Enviamos tanto 'seleccion' como 'idOpcionesElegidas' con la lista limpia e individual
+        const res = await apiCall('authorizeOptions', {
+            idTicket: idTicketEnFoco,
+            seleccion: elegidas,
+            idOpcionesElegidas: elegidas
+        });
+
+        if (res.status === "success") {
+            if (typeof sendAppNotifications === 'function') {
+                sendAppNotifications("AUTORIZADO", idTicketEnFoco).catch(() => { });
+            }
+            Toast.fire({ text: "¡Opciones autorizadas con éxito!", icon: "success" });
+            if (typeof refreshDashboardSilencioso === 'function') await refreshDashboardSilencioso();
+            if (typeof filterDashboard === 'function') filterDashboard();
+        } else {
+            Toast.fire({ text: res.message || "Error al guardar la selección.", icon: "error" });
+        }
+        hideLoading();
+    };
+
+    // Rechazar opción individual
+</script>

@@ -1,0 +1,908 @@
+<script>
+    console.log('[LOAD] Scripts_Acciones OK');
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // FORMULARIO NUEVA SOLICITUD
+    // ─────────────────────────────────────────────────────────────────────────────
+    const newServiceTemplate = () => ({
+        id: 'SVC-' + Date.now(), tipo: 'VUELO', vueloTipo: 'Redondo',
+        origen: '', destino: '', fechaIn: '', fechaOut: '',
+        horaIda: 'Indiferente', horaRegreso: 'Indiferente',
+        terminalSalida: '', terminalRegreso: '',
+        tramos: [
+            { origen: '', destino: '', fecha: '', hora: 'Indiferente', terminalSalida: '' },
+            { origen: '', destino: '', fecha: '', hora: 'Indiferente', terminalSalida: '' }
+        ]
+    });
+    const newPassengerTemplate = () => ({
+        id: Date.now(), nombre: '', _nombre: '', _apellidos: '', nacimiento: '', viajeroFrecuente: '',
+        asientoVuelo: 'Indiferente', equipaje: 'Solo Artículo Personal',
+        camaHotel: 'Indiferente', linkID: '', isUploading: false
+    });
+
+    window.showForm = () => {
+        document.getElementById('dashboard-view').classList.add('hidden');
+        document.getElementById('app-view').classList.remove('hidden');
+
+        const ids = session.empresaIds || [];
+        const selector = document.getElementById('form-empresa-selector');
+        const select = document.getElementById('form-empresa-select');
+
+        if (ids.length > 1) {
+            // Poblar con las empresas del usuario
+            select.innerHTML = ids.map(id => {
+                const c = localData.companies.find(c => c.id === id);
+                return `<option value="${id}">${c ? c.nombre : id}</option>`;
+            }).join('');
+            selector.classList.remove('hidden');
+            document.getElementById('form-policy').innerText = '';
+        } else {
+            selector.classList.add('hidden');
+            // Resolver nombre de empresa desde el catálogo local
+            let nombre = session.empresa;
+            if (ids.length === 1) {
+                const c = localData.companies.find(c => c.id === ids[0]);
+                if (c) nombre = c.nombre;
+            }
+            document.getElementById('form-policy').innerText = nombre ? `Empresa: ${nombre}` : '';
+        }
+
+        arrServices = [newServiceTemplate()];
+        arrPassengers = [newPassengerTemplate()];
+        renderServices(); renderPassengers();
+    };
+
+    window.addService = () => { arrServices.push(newServiceTemplate()); renderServices(); renderPassengers(); };
+    window.removeService = (id) => { arrServices = arrServices.filter(s => s.id !== id); renderServices(); renderPassengers(); };
+    window.updateService = (id, f, v) => {
+        const s = arrServices.find(x => x.id === id);
+        if (s) {
+            s[f] = v;
+            if (f === 'tipo' && v !== 'VUELO') s.vueloTipo = null;
+            // Solo re-renderizar si cambió el tipo o vueloTipo (afecta estructura del form)
+            if (f === 'tipo' || f === 'vueloTipo') { renderServices(); renderPassengers(); }
+        }
+    };
+    window.addTramo = (id) => { const s = arrServices.find(x => x.id === id); if (s) { s.tramos.push({ origen: '', destino: '', fecha: '', hora: 'Indiferente', terminalSalida: '' }); renderServices(); } };
+    window.removeTramo = (id, i) => { const s = arrServices.find(x => x.id === id); if (s && s.tramos.length > 1) { s.tramos.splice(i, 1); renderServices(); } };
+    window.updateTramo = (id, i, field, value) => { const s = arrServices.find(x => x.id === id); if (s?.tramos[i]) s.tramos[i][field] = value; };
+
+    const HORA_OPTIONS = `<option value="Indiferente">Indiferente</option><option value="Manana (00:00 - 11:59)">Manana</option><option value="Medio Dia (12:00 - 15:59)">Medio Dia</option><option value="Tarde (16:00 - 19:59)">Tarde</option><option value="Noche (20:00 - 23:59)">Noche</option>`;
+
+    // ── Autocomplete custom para ciudades (case-insensitive) ──
+    const _ciudades = [...document.querySelectorAll('#lista-ciudades option')].map(o => o.value);
+    let _acDropdown = null;
+    let _acInput = null;
+
+    // Normalizar texto: quitar acentos y pasar a minúsculas
+    function _norm(str) { return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+    function showCityAutocomplete(inputEl) {
+        const val = _norm(inputEl.value);
+        if (val.length < 1) { hideCityAutocomplete(); return; }
+        const matches = _ciudades.filter(c => _norm(c).includes(val)).slice(0, 8);
+        if (matches.length === 0) { hideCityAutocomplete(); return; }
+
+        if (!_acDropdown) {
+            _acDropdown = document.createElement('div');
+            _acDropdown.id = '_ac_dropdown';
+            _acDropdown.style.cssText = 'position:absolute;z-index:9999;background:white;border:2px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.15);max-height:200px;overflow-y:auto;width:100%';
+            document.body.appendChild(_acDropdown);
+        }
+        _acInput = inputEl;
+        const rect = inputEl.getBoundingClientRect();
+        _acDropdown.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+        _acDropdown.style.left = rect.left + 'px';
+        _acDropdown.style.width = rect.width + 'px';
+        _acDropdown.innerHTML = matches.map(c =>
+            `<div style="padding:8px 12px;cursor:pointer;font-size:13px;font-weight:700;color:#334155;border-bottom:1px solid #f1f5f9"
+       onmousedown="selectCity(this.dataset.val)" data-val="${c}">${c}</div>`
+        ).join('');
+        _acDropdown.style.display = 'block';
+    }
+
+    function hideCityAutocomplete() {
+        if (_acDropdown) _acDropdown.style.display = 'none';
+        _acInput = null;
+    }
+
+    window.selectCity = (val) => {
+        if (_acInput) {
+            _acInput.value = val;
+            _acInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        hideCityAutocomplete();
+    };
+
+    document.addEventListener('click', (e) => {
+        if (_acDropdown && e.target !== _acInput && !_acDropdown.contains(e.target)) hideCityAutocomplete();
+    });
+
+    function makeHoraSelect(onchangeStr, selected) {
+        return `<select onchange="${onchangeStr}" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none text-slate-600 focus:border-indipris-main">${HORA_OPTIONS.replace(`value="${selected}"`, `value="${selected}" selected`)}</select>`;
+    }
+
+    function buildServiceInputs(s) {
+        // Helper para input de ciudad con autocomplete custom (case-insensitive)
+        const ciudadInput = (campo, valor, placeholder = '') =>
+            `<div style="position:relative"><input type="text" value="${valor}" placeholder="${placeholder}"
+      oninput="updateService('${s.id}','${campo}',this.value);showCityAutocomplete(this)"
+      onchange="updateService('${s.id}','${campo}',this.value)"
+      onfocus="showCityAutocomplete(this)" onblur="setTimeout(hideCityAutocomplete,200)"
+      autocomplete="off"
+      class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>`;
+
+        if (s.tipo === 'VUELO') {
+            if (s.vueloTipo === 'Redondo') return `
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Origen</label>${ciudadInput('origen', s.origen, 'Ej. Ciudad de México')}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Destino</label>${ciudadInput('destino', s.destino, 'Ej. Cancún')}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Fecha Ida</label><input type="date" value="${s.fechaIn}" onchange="updateService('${s.id}','fechaIn',this.value);verificarSolapePasajeros('${s.id}')" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Horario Ida</label>${makeHoraSelect(`updateService('${s.id}','horaIda',this.value)`, s.horaIda)}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Fecha Regreso</label><input type="date" value="${s.fechaOut}" onchange="updateService('${s.id}','fechaOut',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Horario Regreso</label>${makeHoraSelect(`updateService('${s.id}','horaRegreso',this.value)`, s.horaRegreso)}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Terminal (Ida)</label><input type="text" value="${s.terminalSalida || ''}" onchange="updateService('${s.id}','terminalSalida',this.value)" placeholder="T1, T2..." class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Terminal (Regreso)</label><input type="text" value="${s.terminalRegreso || ''}" onchange="updateService('${s.id}','terminalRegreso',this.value)" placeholder="T1, T2..." class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>`;
+
+            if (s.vueloTipo === 'Sencillo') return `
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Origen</label>${ciudadInput('origen', s.origen, 'Ej. Ciudad de México')}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Destino</label>${ciudadInput('destino', s.destino, 'Ej. Cancún')}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Fecha</label><input type="date" value="${s.fechaIn}" onchange="updateService('${s.id}','fechaIn',this.value);verificarSolapePasajeros('${s.id}')" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Horario</label>${makeHoraSelect(`updateService('${s.id}','horaIda',this.value)`, s.horaIda)}</div>
+      <div class="space-y-2 md:col-span-2"><label class="text-[9px] font-black text-slate-400 uppercase">Terminal de Salida</label><input type="text" value="${s.terminalSalida || ''}" onchange="updateService('${s.id}','terminalSalida',this.value)" placeholder="T1, T2..." class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>`;
+
+            if (s.vueloTipo === 'ConEscala') return `
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Origen</label>${ciudadInput('origen', s.origen, 'Ej. Ciudad de México')}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Destino Final</label>${ciudadInput('destino', s.destino, 'Ej. Cancún')}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Fecha Ida</label><input type="date" value="${s.fechaIn}" onchange="updateService('${s.id}','fechaIn',this.value);verificarSolapePasajeros('${s.id}')" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Horario Ida</label>${makeHoraSelect(`updateService('${s.id}','horaIda',this.value)`, s.horaIda)}</div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Fecha Regreso</label><input type="date" value="${s.fechaOut}" onchange="updateService('${s.id}','fechaOut',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+      <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Horario Regreso</label>${makeHoraSelect(`updateService('${s.id}','horaRegreso',this.value)`, s.horaRegreso)}</div>
+      <div class="space-y-2 md:col-span-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+        <label class="text-[9px] font-black text-amber-700 uppercase">Escala / Conexión preferida (opcional)</label>
+        <input type="text" value="${s.escala || ''}" onchange="updateService('${s.id}','escala',this.value)" placeholder="Ej. Houston, Dallas, CDMX..." class="w-full border-b-2 border-amber-200 bg-transparent py-2 font-bold outline-none focus:border-amber-500">
+        <p class="text-[8px] text-amber-600 font-bold mt-1">Indica si tienes preferencia de ciudad de conexión. El equipo buscará las mejores opciones con escala.</p>
+      </div>`;
+
+            if (s.vueloTipo === 'Multidestino') return `<div class="col-span-1 md:col-span-4 space-y-4">
+      ${s.tramos.map((t, i) => `<div class="p-4 border border-slate-200 rounded-xl relative bg-white flex flex-col md:flex-row gap-4 items-end flex-wrap shadow-sm">
+        <span class="absolute -top-2 left-4 bg-slate-200 text-slate-600 text-[8px] font-black px-2 py-1 rounded-full">TRAMO ${i + 1}</span>
+        ${s.tramos.length > 1 ? `<button onclick="removeTramo('${s.id}',${i})" class="absolute top-2 right-2 text-red-500 font-bold text-xs bg-red-50 w-6 h-6 rounded-full flex justify-center items-center">x</button>` : ''}
+        <div class="w-full md:flex-1"><label class="text-[8px] font-black text-slate-400 uppercase">Origen</label><div style="position:relative"><input type="text" value="${t.origen}" oninput="updateTramo('${s.id}',${i},'origen',this.value);showCityAutocomplete(this)" onfocus="showCityAutocomplete(this)" onblur="setTimeout(hideCityAutocomplete,200)" autocomplete="off" class="w-full border-b-2 border-slate-200 bg-transparent py-1 font-bold outline-none text-sm focus:border-indipris-main"></div></div>
+        <div class="w-full md:flex-1"><label class="text-[8px] font-black text-slate-400 uppercase">Destino</label><div style="position:relative"><input type="text" value="${t.destino}" oninput="updateTramo('${s.id}',${i},'destino',this.value);showCityAutocomplete(this)" onfocus="showCityAutocomplete(this)" onblur="setTimeout(hideCityAutocomplete,200)" autocomplete="off" class="w-full border-b-2 border-slate-200 bg-transparent py-1 font-bold outline-none text-sm focus:border-indipris-main"></div></div>
+        <div class="w-full md:flex-1"><label class="text-[8px] font-black text-slate-400 uppercase">Fecha</label><input type="date" value="${t.fecha}" onchange="updateTramo('${s.id}',${i},'fecha',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-1 font-bold outline-none text-sm focus:border-indipris-main"></div>
+        <div class="w-full md:flex-1"><label class="text-[8px] font-black text-slate-400 uppercase">Horario</label>${makeHoraSelect(`updateTramo('${s.id}',${i},'hora',this.value)`, t.hora).replace('class="w-full', 'class="w-full text-sm ')}</div>
+        <div class="w-full md:flex-1"><label class="text-[8px] font-black text-slate-400 uppercase">Terminal Salida</label><input type="text" value="${t.terminalSalida || ''}" onchange="updateTramo('${s.id}',${i},'terminalSalida',this.value)" placeholder="T1..." class="w-full border-b-2 border-slate-200 bg-transparent py-1 font-bold outline-none text-sm focus:border-indipris-main"></div>
+      </div>`).join('')}
+      <button onclick="addTramo('${s.id}')" class="text-[10px] font-black text-pink-600 mt-2 bg-pink-50 px-4 py-2 rounded-full hover:bg-pink-100 transition shadow-sm w-full md:w-auto">+ AÑADIR OTRO TRAMO</button>
+    </div>`;
+        }
+
+        // HOTEL / BUS
+        const label1 = s.tipo === 'HOTEL' ? 'Nombre Hotel (o Zona)' : 'Origen';
+        const label2 = s.tipo === 'HOTEL' ? 'Ciudad' : 'Destino';
+        const label3 = s.tipo === 'HOTEL' ? 'Check-In' : 'Salida';
+        const label4 = s.tipo === 'HOTEL' ? 'Check-Out' : 'Regreso (Opcional)';
+        const inputOrigen = s.tipo === 'BUS'
+            ? ciudadInput('origen', s.origen, 'Ej. Ciudad de México')
+            : `<input type="text" value="${s.origen}" onchange="updateService('${s.id}','origen',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main">`;
+        const inputDestino = s.tipo === 'BUS'
+            ? ciudadInput('destino', s.destino, 'Ej. Guadalajara')
+            : `<input type="text" value="${s.destino}" onchange="updateService('${s.id}','destino',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main">`;
+        return `
+    <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">${label1}</label>${inputOrigen}</div>
+    <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">${label2}</label>${inputDestino}</div>
+    <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">${label3}</label><input type="date" value="${s.fechaIn}" onchange="updateService('${s.id}','fechaIn',this.value)${s.tipo === 'BUS' ? `;verificarSolapePasajeros('${s.id}')` : ''}" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>
+    <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">${label4}</label><input type="date" value="${s.fechaOut}" onchange="updateService('${s.id}','fechaOut',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-bold outline-none focus:border-indipris-main"></div>`;
+    }
+
+    window.renderServices = () => {
+        document.getElementById('services-container').innerHTML = arrServices.map((s, index) => `
+    <div class="p-4 md:p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 relative">
+      <div class="absolute -top-3 left-4 md:left-6 bg-slate-800 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest">SERVICIO ${index + 1}</div>
+      ${arrServices.length > 1 ? `<button onclick="removeService('${s.id}')" class="absolute -top-3 -right-3 bg-red-500 text-white w-7 h-7 rounded-full text-xs font-bold shadow-lg flex items-center justify-center">x</button>` : ''}
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-4 mb-6 border-b border-slate-200 pb-6">
+        <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Tipo</label>
+          <select onchange="updateService('${s.id}','tipo',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-black text-pink-600 outline-none focus:border-indipris-main">
+            <option value="VUELO"  ${s.tipo === 'VUELO' ? 'selected' : ''}> VUELO</option>
+            <option value="HOTEL"  ${s.tipo === 'HOTEL' ? 'selected' : ''}> HOTEL</option>
+            <option value="BUS"    ${s.tipo === 'BUS' ? 'selected' : ''}> AUTOBUS</option>
+          </select>
+        </div>
+        ${s.tipo === 'VUELO' ? `<div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Trayecto</label>
+          <select onchange="updateService('${s.id}','vueloTipo',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 font-black text-blue-600 outline-none focus:border-indipris-main">
+            <option value="Redondo"      ${s.vueloTipo === 'Redondo' ? 'selected' : ''}>🔁 Redondo</option>
+            <option value="Sencillo"     ${s.vueloTipo === 'Sencillo' ? 'selected' : ''}>➡️ Sencillo</option>
+            <option value="Multidestino" ${s.vueloTipo === 'Multidestino' ? 'selected' : ''}>🔀 Multidestino</option>
+            <option value="ConEscala"    ${s.vueloTipo === 'ConEscala' ? 'selected' : ''}>✈️ Con Escala</option>
+          </select>
+        </div>` : ''}
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">${buildServiceInputs(s)}</div>
+    </div>`).join('');
+    };
+
+    window.addPassenger = () => { arrPassengers.push(newPassengerTemplate()); renderPassengers(); };
+    window.removePassenger = (id) => { arrPassengers = arrPassengers.filter(p => p.id !== id); renderPassengers(); };
+
+    window.showBulkUploadScreen = () => {
+        document.getElementById('dashboard-operativo').classList.add('hidden');
+        document.getElementById('bulk-upload-view').classList.remove('hidden');
+    };
+
+    window.hideBulkUploadScreen = () => {
+        document.getElementById('bulk-upload-view').classList.add('hidden');
+        document.getElementById('dashboard-operativo').classList.remove('hidden');
+        window.cancelCSVUpload();
+    };
+
+    window.downloadExcelTemplate = () => {
+        const headers = [
+            'ID Vuelo', 'Nombres', 'Apellido Paterno', 'Apellido Materno', 'Fecha de nacimiento', 
+            'Numero de viajero frecuente', 'Tarifa', 'Tipo de asiento', 'Equipaje', 'Aerolínea', 
+            'Número Vuelo', 'Origen', 'Destino', 'Fecha Salida', 'Hora Salida (Local)', 
+            'Fecha Llegada', 'Hora Llegada (Local)', 'Código Reserva (PNR)', 'Estatus'
+        ];
+        const data = [
+            headers,
+            ["", "Juan", "Pérez", "Gómez", "1990-05-20", "AM12345", "", "Pasillo", "Solo Artículo Personal", "Aeroméxico", "AM123", "CDMX", "Cancún", "2025-10-15", "08:00", "2025-10-15", "10:15", "ABCDEF", "Pendiente"]
+        ];
+        
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, "Vuelos");
+        XLSX.writeFile(wb, "plantilla_vuelos.xlsx");
+    };
+
+    let excelParsedData = [];
+
+    window.handleExcelSelect = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        document.getElementById('excel-file-label').innerText = file.name;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+            
+            excelParsedData = json;
+            renderExcelPreview(json);
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    window.updateExcelCell = (rowIdx, field, value) => {
+        if (excelParsedData[rowIdx]) {
+            excelParsedData[rowIdx][field] = value.trim();
+        }
+    };
+
+    function renderExcelPreview(data) {
+        const tbody = document.getElementById('excel-preview-body');
+        tbody.innerHTML = data.map((row, idx) => {
+            return `
+                <tr class="hover:bg-slate-50">
+                  <td class="px-3 py-2 text-slate-400 font-bold">${idx + 1}</td>
+                  <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Nombres', this.innerText)">${row['Nombres'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Apellido Paterno', this.innerText)">${row['Apellido Paterno'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Apellido Materno', this.innerText)">${row['Apellido Materno'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha de nacimiento', this.innerText)">${row['Fecha de nacimiento'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Numero de viajero frecuente', this.innerText)">${row['Numero de viajero frecuente'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerolínea', this.innerText)">${row['Aerolínea'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Número Vuelo', this.innerText)">${row['Número Vuelo'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Origen', this.innerText)">${row['Origen'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Destino', this.innerText)">${row['Destino'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida', this.innerText)">${row['Fecha Salida'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Código Reserva (PNR)', this.innerText)">${row['Código Reserva (PNR)'] || ''}</td>
+                </tr>
+            `;
+        }).join('');
+
+        document.getElementById('excel-preview-container').classList.remove('hidden');
+    }
+
+    window.cancelExcelUpload = () => {
+        document.getElementById('excel-file-input').value = '';
+        document.getElementById('excel-file-label').innerText = 'Seleccionar archivo Excel...';
+        document.getElementById('excel-preview-container').classList.add('hidden');
+        excelParsedData = [];
+    };
+
+    window.submitBulkRequests = async () => {
+        if (excelParsedData.length === 0) return;
+
+        showLoading('Creando solicitudes...');
+        
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const row of excelParsedData) {
+            try {
+                const nombreCompleto = `${row['Nombres'] || ''} ${row['Apellido Paterno'] || ''} ${row['Apellido Materno'] || ''}`.trim();
+                const aerolinea = row['Aerolínea'] || '';
+                const numVuelo = row['Número Vuelo'] || '';
+                const horaSalida = row['Hora Salida (Local)'] || '';
+                const horaLlegada = row['Hora Llegada (Local)'] || '';
+                const pnr = row['Código Reserva (PNR)'] || '';
+
+                const esRedondo = !!row['Fecha Llegada'];
+                const detallesTecnicos = `Vuelo ${esRedondo ? 'Redondo' : 'Sencillo'} | Ida: ${horaSalida}${esRedondo ? ` | Regreso: ${horaLlegada}` : ''} | Aerolinea: ${aerolinea} | Num Vuelo: ${numVuelo} | Tarifa: ${row['Tarifa'] || ''} | PNR: ${pnr}`;
+
+                const payload = {
+                    empresa: session.empresaIds && session.empresaIds.length > 0 ? session.empresaIds[0] : (session.empresa || ''),
+                    evento: 'Carga Masiva Excel',
+                    notas: `Carga automática de Vuelo. PNR: ${pnr}`,
+                    servicios: [{
+                        tipo: 'VUELO',
+                        origen: row['Origen'] || '',
+                        destino: row['Destino'] || '',
+                        fechaIn: row['Fecha Salida'] || '',
+                        fechaOut: row['Fecha Llegada'] || '',
+                        detalles: detallesTecnicos
+                    }],
+                    pasajeros: [{
+                        nombre: nombreCompleto,
+                        nacimiento: row['Fecha de nacimiento'] || '',
+                        viajeroFrecuente: row['Numero de viajero frecuente'] || '',
+                        asiento: row['Tipo de asiento'] || 'Indiferente',
+                        maletas: row['Equipaje'] || 'Solo Artículo Personal',
+                        linkId: ''
+                    }]
+                };
+
+                const res = await apiCall('createRequest', payload);
+                if (res.status === 'success') {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } catch (e) {
+                failCount++;
+            }
+        }
+
+        // Enviar notificación de la carga masiva
+        try {
+            const empresaIdForm = session.empresaIds && session.empresaIds.length > 0 ? session.empresaIds[0] : (session.empresa || '');
+            const solicitanteForm = session.name;
+            const empresaNombreForm = localData.companies.find(c => c.id === empresaIdForm)?.nombre || empresaIdForm;
+            
+            const contactosRes = await apiCall('getContactosNotificacion', { empresaId: empresaIdForm, evento: 'CREACION' });
+            if (contactosRes.status === "success") {
+                const msgAdmin = `*Indipris Travel*\nSe ha realizado una carga masiva de Vuelos de la empresa *${empresaNombreForm}* por *${solicitanteForm}*.\nCantidad de solicitudes creadas: *${successCount}*.`;
+                const msgIndy = `*NUEVA CARGA MASIVA*\nEmpresa: *${empresaNombreForm}*\nDe: ${solicitanteForm}\nCantidad de solicitudes: *${successCount}*.`;
+                
+                _sendWA(contactosRes.data.adminContactos || contactosRes.data.admins, msgAdmin, 'CREACION', 'MASIVO');
+                _sendWA(contactosRes.data.indiprisContactos || contactosRes.data.indipris, msgIndy, 'CREACION', 'MASIVO');
+            }
+        } catch (e) {
+            console.error("Error sending bulk notification:", e);
+        }
+
+        hideLoading();
+        window.hideBulkUploadScreen();
+        forceRefresh();
+        
+        Swal.fire({
+            title: 'Carga Completada',
+            text: `Se crearon ${successCount} solicitudes de vuelo exitosamente.${failCount > 0 ? ` Fallaron ${failCount} registros.` : ''}`,
+            icon: 'success'
+        });
+    };
+
+    // Actualizar nombre/apellidos y concatenar en nombre completo
+    window.updatePaxName = (id, field, val) => {
+        const p = arrPassengers.find(x => x.id === id);
+        if (!p) return;
+
+        // Detectar si el usuario seleccionó un nombre completo del datalist
+        const opciones = [...document.querySelectorAll('#lista-nombres option')].map(o => o.value);
+        const esSeleccionCompleta = opciones.some(o => o.toLowerCase() === val.toLowerCase().trim());
+
+        if (esSeleccionCompleta) {
+            // El usuario eligió un nombre completo del catálogo — dividirlo
+            const parts = val.trim().split(/\s+/);
+            if (parts.length >= 3) {
+                // Heurística: primer nombre + segundo nombre = _nombre, resto = apellidos
+                p._nombre = parts.slice(0, Math.ceil(parts.length / 2)).join(' ');
+                p._apellidos = parts.slice(Math.ceil(parts.length / 2)).join(' ');
+            } else if (parts.length === 2) {
+                p._nombre = parts[0];
+                p._apellidos = parts[1];
+            } else {
+                p[field] = val;
+            }
+            p.nombre = val.trim();
+            renderPassengers();
+            _triggerNameAutocomplete(id, p.nombre);
+            return;
+        }
+
+        p[field] = val;
+        const fullName = ((p._nombre || '') + ' ' + (p._apellidos || '')).trim();
+        p.nombre = fullName;
+        if (val.length >= 2) {
+            _triggerNameAutocomplete(id, fullName);
+        }
+    };
+
+    // Debounce para evitar llamadas mientras el usuario sigue escribiendo
+    let _nameSelectTimer = null;
+
+    function _triggerNameAutocomplete(id, val) {
+        handleNameSelect(id, val);
+    }
+
+    window.handleNameSelect = (id, val) => {
+        const p = arrPassengers.find(x => x.id === id);
+        if (!p) return;
+        p.nombre = val;
+
+        // Cancelar timer anterior
+        if (_nameSelectTimer) clearTimeout(_nameSelectTimer);
+        if (!val || val.trim().length < 2) return;
+
+        // Esperar 400ms de inactividad antes de buscar (el usuario terminó de escribir o seleccionó)
+        _nameSelectTimer = setTimeout(async () => {
+            // Verificar coincidencia exacta con el catálogo
+            const opciones = document.querySelectorAll('#lista-nombres option');
+            const coincide = [...opciones].some(o => o.value.toLowerCase() === val.toLowerCase().trim());
+            if (!coincide) return;
+
+            const res = await apiCall('getPasajeroDetalle', { nombre: val.trim() });
+            if (res.status !== "success") return;
+
+            // Volver a buscar el pasajero por si cambió mientras esperábamos
+            const pActual = arrPassengers.find(x => x.id === id);
+            if (!pActual || pActual.nombre.toLowerCase() !== val.toLowerCase().trim()) return;
+
+            // Precargar solo campos vacíos
+            let cambio = false;
+            if (!pActual.nacimiento && res.data.nacimiento) {
+                pActual.nacimiento = formatToDateInput(res.data.nacimiento);
+                cambio = true;
+            }
+            if (!pActual.linkID && res.data.linkID) {
+                pActual.linkID = res.data.linkID;
+                cambio = true;
+            }
+            if (pActual.asientoVuelo === 'Indiferente' && res.data.asientoVuelo && res.data.asientoVuelo !== 'Indiferente') {
+                pActual.asientoVuelo = res.data.asientoVuelo;
+                cambio = true;
+            }
+            if (pActual.equipaje === 'Solo Artículo Personal' && res.data.equipaje && res.data.equipaje !== 'Solo Artículo Personal') {
+                pActual.equipaje = res.data.equipaje;
+                cambio = true;
+            }
+
+            // Si el nombre completo fue autocompletado, dividir en nombre/apellidos
+            if (pActual.nombre && (!pActual._nombre || !pActual._apellidos)) {
+                const parts = pActual.nombre.trim().split(/\s+/);
+                if (parts.length >= 3) {
+                    // Asumir: primer nombre(s) = primera palabra, apellidos = el resto
+                    pActual._nombre = parts[0];
+                    pActual._apellidos = parts.slice(1).join(' ');
+                } else if (parts.length === 2) {
+                    pActual._nombre = parts[0];
+                    pActual._apellidos = parts[1];
+                }
+                cambio = true;
+            }
+
+            if (cambio) renderPassengers();
+        }, 400);
+    };
+    window.updatePassenger = (id, f, v) => { const p = arrPassengers.find(x => x.id === id); if (p) p[f] = v; };
+
+    window.uploadFile = (id, inputEl) => {
+        const file = inputEl.files[0]; if (!file) return;
+        const p = arrPassengers.find(x => x.id === id);
+        p.isUploading = true; renderPassengers();
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const base64 = reader.result.split(',')[1];
+            const res = await apiCall('uploadFile', { fileName: p.nombre ? `${p.nombre}_ID_${file.name}` : file.name, mimeType: file.type, base64 });
+            p.isUploading = false;
+            if (res.status === "success") p.linkID = res.data.url;
+            else Toast.fire({ text: "Error al subir archivo.", icon: "error" });
+            renderPassengers();
+        };
+        reader.readAsDataURL(file);
+    };
+
+    window.renderPassengers = () => {
+        const hasVuelo = arrServices.some(s => s.tipo === 'VUELO');
+        const hasHotel = arrServices.some(s => s.tipo === 'HOTEL');
+        document.getElementById('passengers-container').innerHTML = arrPassengers.map((p, index) => `
+    <div class="p-4 md:p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 relative">
+      <div class="absolute -top-3 left-4 md:left-6 bg-pink-600 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest">PASAJERO ${index + 1}</div>
+      ${arrPassengers.length > 1 ? `<button onclick="removePassenger(${p.id})" class="absolute -top-3 -right-3 bg-red-500 text-white w-7 h-7 rounded-full text-xs font-bold shadow-lg flex items-center justify-center">x</button>` : ''}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 mb-6">
+        <div class="space-y-2">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nombre(s)</label>
+          <input type="text" list="lista-nombres" value="${p._nombre || ''}" oninput="updatePaxName(${p.id},'_nombre',this.value)" placeholder="Ej. María Dolores" class="w-full border-b-2 border-slate-300 bg-transparent py-2 outline-none font-black text-slate-800 text-base focus:border-indipris-main">
+        </div>
+        <div class="space-y-2">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Apellidos</label>
+          <input type="text" list="lista-nombres" value="${p._apellidos || ''}" oninput="updatePaxName(${p.id},'_apellidos',this.value)" placeholder="Ej. Gómez Garduño" class="w-full border-b-2 border-slate-300 bg-transparent py-2 outline-none font-black text-slate-800 text-base focus:border-indipris-main">
+        </div>
+      </div>
+      <input type="hidden" id="pax-fullname-${p.id}" value="${p.nombre}">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6">
+        <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Nacimiento</label><input type="date" value="${p.nacimiento}" max="${new Date().toISOString().split('T')[0]}" onchange="updatePassenger(${p.id},'nacimiento',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 outline-none font-black text-slate-800 text-base focus:border-indipris-main"></div>
+        ${hasVuelo ? `
+        <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Asiento Vuelo</label>
+          <select onchange="updatePassenger(${p.id},'asientoVuelo',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 outline-none font-bold text-slate-700 focus:border-indipris-main">
+            <option value="Indiferente" ${p.asientoVuelo === 'Indiferente' ? 'selected' : ''}>Indiferente</option>
+            <option value="Ventana"     ${p.asientoVuelo === 'Ventana' ? 'selected' : ''}>Ventana</option>
+            <option value="Pasillo"     ${p.asientoVuelo === 'Pasillo' ? 'selected' : ''}>Pasillo</option>
+          </select>
+        </div>
+        <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Equipaje Vuelo</label>
+          <select onchange="updatePassenger(${p.id},'equipaje',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 outline-none font-bold text-slate-700 focus:border-indipris-main">
+            <option value="Solo Artículo Personal" ${p.equipaje === 'Solo Artículo Personal' ? 'selected' : ''}>Solo Artículo Personal</option>
+            <option value="1 Maleta Mano (10kg)"   ${p.equipaje === '1 Maleta Mano (10kg)' ? 'selected' : ''}>1 Maleta Mano (10kg)</option>
+            <option value="1 Documentada (25kg)"   ${p.equipaje === '1 Documentada (25kg)' ? 'selected' : ''}>1 Documentada (25kg)</option>
+          </select>
+        </div>` : ''}
+        ${hasHotel ? `
+        <div class="space-y-2"><label class="text-[9px] font-black text-slate-400 uppercase">Cama Hotel</label>
+          <select onchange="updatePassenger(${p.id},'camaHotel',this.value)" class="w-full border-b-2 border-slate-200 bg-transparent py-2 outline-none font-bold text-slate-700 focus:border-indipris-main">
+            <option value="Indiferente"     ${p.camaHotel === 'Indiferente' ? 'selected' : ''}>Indiferente</option>
+            <option value="1 Cama King"     ${p.camaHotel === '1 Cama King' ? 'selected' : ''}>1 Cama King</option>
+            <option value="2 Camas Dobles"  ${p.camaHotel === '2 Camas Dobles' ? 'selected' : ''}>2 Camas Dobles</option>
+          </select>
+        </div>` : ''}
+      </div>
+      <div class="mt-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Número de Viajero Frecuente</label>
+        <input type="text" value="${p.viajeroFrecuente || ''}" onchange="updatePassenger(${p.id},'viajeroFrecuente',this.value)" placeholder="Ej. AM-12345678" class="w-full border-b-2 border-slate-200 bg-transparent py-2 outline-none font-bold text-slate-700 text-xs mb-4 focus:border-indipris-main">
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Identificacion / Pasaporte</label>
+        <input type="text" value="${p.linkID}" onchange="updatePassenger(${p.id},'linkID',this.value)" placeholder="Pega el link aqui..." class="w-full border-b-2 border-slate-200 bg-transparent py-2 outline-none font-bold text-slate-700 text-xs mb-3 focus:border-indipris-main">
+        <label class="block w-full border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50 rounded-xl p-3 text-center cursor-pointer transition">
+          <span class="text-[10px] font-black text-slate-500">${p.isUploading ? '⏳ Subiendo...' : '📂 O presiona aquí para subir el archivo'}</span>
+          <input type="file" class="hidden" accept=".pdf,image/*" onchange="uploadFile(${p.id},this)">
+        </label>
+      </div>
+    </div>`).join('');
+    };
+
+    window.submitRequest = async () => {
+        const serviciosProcesados = [];
+        let faltanDatos = false;
+
+        arrServices.forEach(s => {
+            if (s.tipo === 'VUELO') {
+                if (s.vueloTipo === 'Redondo') {
+                    if (!s.origen || !s.destino) faltanDatos = true;
+                    let d = `Vuelo Redondo | Ida: ${s.horaIda}`;
+                    if (s.terminalSalida) d += ` (Term: ${s.terminalSalida})`;
+                    d += ` | Regreso: ${s.horaRegreso}`;
+                    if (s.terminalRegreso) d += ` (Term: ${s.terminalRegreso})`;
+                    serviciosProcesados.push({ ...s, detalles: d });
+                } else if (s.vueloTipo === 'Sencillo') {
+                    if (!s.origen || !s.destino) faltanDatos = true;
+                    let d = `Vuelo Sencillo | Horario: ${s.horaIda}`;
+                    if (s.terminalSalida) d += ` (Term: ${s.terminalSalida})`;
+                    serviciosProcesados.push({ ...s, fechaOut: '', detalles: d });
+                } else if (s.vueloTipo === 'Multidestino') {
+                    s.tramos.forEach((t, i) => {
+                        if (!t.origen || !t.destino || !t.fecha) faltanDatos = true;
+                        let d = `Tramo ${i + 1} (Multidestino) | Horario: ${t.hora}`;
+                        if (t.terminalSalida) d += ` (Term: ${t.terminalSalida})`;
+                        serviciosProcesados.push({ id: s.id + '-T' + (i + 1), tipo: 'VUELO', origen: t.origen, destino: t.destino, fechaIn: t.fecha, fechaOut: '', detalles: d });
+                    });
+                } else if (s.vueloTipo === 'ConEscala') {
+                    if (!s.origen || !s.destino) faltanDatos = true;
+                    let d = `Vuelo Con Escala | Ida: ${s.horaIda}`;
+                    if (s.terminalSalida) d += ` (Term: ${s.terminalSalida})`;
+                    d += ` | Regreso: ${s.horaRegreso}`;
+                    if (s.terminalRegreso) d += ` (Term: ${s.terminalRegreso})`;
+                    if (s.escala) d += ` | Escala preferida: ${s.escala}`;
+                    serviciosProcesados.push({ ...s, detalles: d });
+                }
+            } else {
+                if (!s.origen || !s.destino) faltanDatos = true;
+                serviciosProcesados.push({ ...s });
+            }
+        });
+
+        // ── Validaciones de fechas ──────────────────────────────────────────────────
+        const hoy = new Date().toISOString().split('T')[0];
+        const advertencias = [];
+
+        // Fechas de nacimiento no pueden ser futuras
+        for (const p of arrPassengers) {
+            if (p.nacimiento && p.nacimiento > hoy) {
+                await Swal.fire({ icon: 'error', title: 'Fecha inválida', text: `${p.nombre || 'Un pasajero'} tiene fecha de nacimiento en el futuro.` });
+                btn.disabled = false; document.getElementById('btn-submit-text').innerText = "ENVIAR A COTIZACIÓN"; return;
+            }
+        }
+
+        // Fechas de viaje en el pasado
+        for (const sp of serviciosProcesados) {
+            if (sp.fechaIn && sp.fechaIn < hoy) {
+                advertencias.push(`Servicio ${sp.tipo} ${sp.origen}→${sp.destino}: fecha de ida (${formatDateHuman(sp.fechaIn)}) es anterior a hoy.`);
+            }
+            // Regreso antes que ida
+            if (sp.fechaIn && sp.fechaOut && sp.fechaOut < sp.fechaIn) {
+                advertencias.push(`Servicio ${sp.tipo} ${sp.origen}→${sp.destino}: fecha de regreso (${formatDateHuman(sp.fechaOut)}) es anterior a la ida (${formatDateHuman(sp.fechaIn)}).`);
+            }
+        }
+
+        if (advertencias.length > 0) {
+            const { isConfirmed } = await Swal.fire({
+                icon: 'warning', title: 'Revisa las fechas',
+                html: advertencias.map(a => `<p class="text-sm text-amber-700 font-bold mb-1">⚠️ ${a}</p>`).join(''),
+                confirmButtonText: 'Enviar de todas formas',
+                showCancelButton: true, cancelButtonText: 'Corregir'
+            });
+            if (!isConfirmed) {
+                btn.disabled = false; document.getElementById('btn-submit-text').innerText = "ENVIAR A COTIZACIÓN"; return;
+            }
+        }
+
+        if (faltanDatos || !arrPassengers[0].nombre) return Toast.fire({ text: "Faltan datos obligatorios.", icon: "warning" });
+
+        const btn = document.getElementById('btn-submit');
+        document.getElementById('spinner').classList.remove('hidden');
+        btn.disabled = true;
+        document.getElementById('btn-submit-text').innerText = "ENVIANDO Y NOTIFICANDO...";
+
+        // Resolver qué empresa va en el ticket
+        const ids = session.empresaIds || [];
+        const empresaIdParaTicket = ids.length > 1
+            ? document.getElementById('form-empresa-select').value
+            : (ids[0] || session.empresaId || '');
+
+        const payload = {
+            requester: {
+                name: session.name,
+                email: session.email,
+                phone: session.phone,
+                empresaId: empresaIdParaTicket,
+                evento: document.getElementById('req-evento')?.value?.trim() || '',
+                notes: document.getElementById('req-notes').value
+            },
+            servicios: serviciosProcesados,
+            pasajeros: arrPassengers
+        };
+        const res = await apiCall('createRequest', payload);
+
+        if (res.status === "success") {
+            // Enviar notificación directamente con los datos del formulario
+            const idTicketNuevo = res.data.idTicket;
+            const asignadoNuevo = res.data.asignado || 'Sin asignar';
+            const empresaIdForm = payload.requester.empresaId;
+            const solicitanteForm = payload.requester.name;
+            const link = `${APP_BASE_URL}?ticket=${idTicketNuevo}`;
+            const empresaNombreForm = localData.companies.find(c => c.id === empresaIdForm)?.nombre || empresaIdForm;
+
+            const contactosRes = await apiCall('getContactosNotificacion', { empresaId: empresaIdForm, evento: 'CREACION' });
+            if (contactosRes.status === "success") {
+                const vars = { solicitante: solicitanteForm, idTicket: idTicketNuevo, empresa: empresaNombreForm, link, motivo: '', asignado: asignadoNuevo };
+                const fill = (tpl) => tpl ? tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '') : '';
+                const msgAdmin = fill(waConfig.templates.CREACION_admin || '*Indipris Travel*\nNueva solicitud *({idTicket})* de {solicitante}.\nAsignada a: *{asignado}*\n{link}');
+                const msgIndy = fill(waConfig.templates.CREACION_indy || '*NUEVA SOLICITUD*\nTicket: {idTicket}\nDe: {solicitante} ({empresa})\nAsignada a: *{asignado}*\n{link}');
+                _sendWA(contactosRes.data.adminContactos || contactosRes.data.admins, msgAdmin, 'CREACION', idTicketNuevo);
+                _sendWA(contactosRes.data.indiprisContactos || contactosRes.data.indipris, msgIndy, 'CREACION', idTicketNuevo);
+            }
+
+            document.getElementById('app-view').classList.add('hidden');
+            document.getElementById('success-view').classList.remove('hidden');
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+
+        document.getElementById('spinner').classList.add('hidden');
+        btn.disabled = false;
+        document.getElementById('btn-submit-text').innerText = "ENVIAR A COTIZACIÓN";
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // VERIFICAR SOLAPE DE PASAJEROS
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // Verifica si algún pasajero del formulario ya tiene una solicitud activa en las mismas fechas
+    window.verificarSolapePasajeros = (_svcId) => {
+        const alertEl = document.getElementById('aviso-solape');
+        if (!alertEl) return;
+
+        // Nombres de pasajeros en el formulario
+        const nombresPax = arrPassengers.map(p => p.nombre.trim().toLowerCase()).filter(Boolean);
+        if (nombresPax.length === 0) { alertEl.classList.add('hidden'); return; }
+
+        // Buscar en el dashboard tickets activos (no Cancelado) que tengan estos pasajeros
+        const estadosActivos = new Set(['Pendiente', 'Cotizado', 'Autorizado', 'Comprado']);
+        const conflictos = [];
+
+        localData.dashboard.forEach(t => {
+            if (!estadosActivos.has(t[4])) return;
+
+            const paxTicket = (localData.pasajerosResumen[t[0]] || []).map(n => n.toLowerCase());
+            const nombresCoinciden = nombresPax.filter(n => paxTicket.includes(n));
+            if (nombresCoinciden.length === 0) return;
+
+            // Obtener resumen del ticket para la advertencia
+            const svcsTicket = localData.serviciosResumen.filter(s => s[0] === t[0]);
+            const rutaResumen = svcsTicket.map(s => s[2] + '→' + s[3]).join(', ') || 'Sin ruta';
+
+            nombresCoinciden.forEach(nombre => {
+                conflictos.push({ ticket: t[0], empresa: t[3], estado: t[4], nombre, ruta: rutaResumen });
+            });
+        });
+
+        if (conflictos.length > 0) {
+            const unicos = [...new Map(conflictos.map(c => [c.ticket + c.nombre, c])).values()];
+            alertEl.innerHTML = `<div class="flex gap-3 items-start">
+      <span class="text-xl shrink-0">⚠️</span>
+      <div>
+        <p class="font-black text-amber-800 text-xs uppercase tracking-widest mb-2">Pasajeros con viajes activos</p>
+        ${unicos.map(c => `<p class="text-xs font-bold text-amber-700 mb-1"><span class="font-black">${c.nombre}</span> tiene ticket <span class="font-mono">${c.ticket}</span> (${c.estado}) ${c.ruta} — ${c.empresa}</p>`).join('')}
+        <p class="text-[10px] text-amber-600 mt-2 font-bold">Puedes continuar si es intencional.</p>
+      </div>
+    </div>`;
+            alertEl.classList.remove('hidden');
+        } else {
+            alertEl.classList.add('hidden');
+        }
+    };
+
+    // También verificar cuando se agrega/cambia un pasajero
+    const _origHandleNameSelect = window.handleNameSelect;
+    window.handleNameSelect = (id, val) => {
+        _origHandleNameSelect(id, val);
+        setTimeout(() => verificarSolapePasajeros(null), 500);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // REASIGNAR EJECUTIVO (solo super)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    window.reasignarEjecutivo = async () => {
+        // Obtener ejecutivos: combinar los del dashboard + los del API de usuarios
+        const fromDash = [...new Set(
+            localData.dashboard.map(t => String(t[8] || '').trim()).filter(Boolean)
+        )];
+
+        // Intentar obtener lista completa de indipris/super
+        let todosEjecutivos = [...fromDash];
+        try {
+            const usrRes = await apiCall('getUsuarios');
+            if (usrRes.status === 'success') {
+                usrRes.data.forEach(u => {
+                    const rol = String(u[2] || '').trim();
+                    const nombre = String(u[0] || '').trim();
+                    if ((rol === 'indipris' || rol === 'super') && nombre && todosEjecutivos.indexOf(nombre) === -1) {
+                        todosEjecutivos.push(nombre);
+                    }
+                });
+            }
+        } catch (e) { }
+
+        todosEjecutivos.sort();
+        const optsHtml = todosEjecutivos.map(e => `<option value="${e}">${e}</option>`).join('');
+
+        const { value: nuevoEjecutivo } = await Swal.fire({
+            title: 'Reasignar Ejecutivo',
+            html: `<p class="text-xs text-slate-500 font-bold mb-3">Ticket: <span class="font-mono">${idTicketEnFoco}</span></p>
+      <select id="swal-ejecutivo" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 outline-none focus:border-indipris-main text-sm">
+        <option value="">- Seleccionar ejecutivo -</option>
+        ${optsHtml}
+      </select>`,
+            showCancelButton: true,
+            confirmButtonText: 'Reasignar',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const val = document.getElementById('swal-ejecutivo').value;
+                if (!val) Swal.showValidationMessage('Selecciona un ejecutivo');
+                return val;
+            }
+        });
+
+        if (!nuevoEjecutivo) return;
+
+        showLoading('Reasignando...');
+        const res = await apiCall('reasignarEjecutivo', { idTicket: idTicketEnFoco, nuevoEjecutivo });
+        hideLoading();
+
+        if (res.status === 'success') {
+            await refreshDashboardSilencioso();
+            await openDetalles(idTicketEnFoco);
+            Toast.fire({ text: ` Ticket reasignado a ${nuevoEjecutivo}`, icon: 'success', timer: 2000, showConfirmButton: false });
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EXTRAS EN TARIFA
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    window.openModalExtra = () => {
+        document.getElementById('extra-desc').value = '';
+        document.getElementById('extra-costo').value = '';
+        document.getElementById('extra-fee').value = '';
+        document.getElementById('extra-cp').value = '';
+        document.getElementById('extra-resumen').classList.add('hidden');
+        document.getElementById('modal-extra').classList.remove('hidden');
+        setTimeout(() => document.getElementById('extra-desc').focus(), 100);
+    };
+
+    window.calcularResumenExtra = () => {
+        const c = Number(document.getElementById('extra-costo').value || 0);
+        const f = Number(document.getElementById('extra-fee').value || 0);
+        const sub = c + f;
+        const iva = sub * 0.16;
+        const tot = sub + iva;
+
+        const resumen = document.getElementById('extra-resumen');
+        if (sub > 0) {
+            document.getElementById('extra-sub').innerText = formatCurrency(sub);
+            document.getElementById('extra-iva').innerText = formatCurrency(iva);
+            document.getElementById('extra-tot').innerText = formatCurrency(tot);
+            resumen.classList.remove('hidden');
+        } else {
+            resumen.classList.add('hidden');
+        }
+    };
+
+    window.guardarExtra = async () => {
+        const desc = document.getElementById('extra-desc').value.trim();
+        const costo = Number(document.getElementById('extra-costo').value || 0);
+        const fee = Number(document.getElementById('extra-fee').value || 0);
+        const cp = Number(document.getElementById('extra-cp').value || 0);
+
+        if (!desc) return Toast.fire({ text: 'La descripción es obligatoria.', icon: 'warning' });
+        if (costo === 0 && fee === 0) return Toast.fire({ text: 'Agrega al menos un costo o fee.', icon: 'warning' });
+
+        const btn = document.getElementById('btn-guardar-extra');
+        btn.disabled = true; btn.innerText = 'GUARDANDO...';
+
+        const res = await apiCall('agregarExtra', {
+            idTicket: idTicketEnFoco,
+            descripcion: desc,
+            costoExtra: costo,
+            feeExtra: fee,
+            costoProveedor: cp
+        });
+
+        btn.disabled = false; btn.innerText = '➕ Guardar Extra';
+
+        if (res.status === 'success') {
+            closeModal('modal-extra');
+            // Notificar al cliente (sin re-autorización requerida)
+            const ticketRow = localData.dashboard.find(t => t[0] === idTicketEnFoco);
+            if (ticketRow) {
+                const link = `${APP_BASE_URL}?ticket=${idTicketEnFoco}`;
+                const empresaId = ticketRow[10] || ticketRow[3];
+                const solicitante = ticketRow[2];
+                const empresaNom = ticketRow[3];
+                const contactosRes = await apiCall('getContactosNotificacion', { empresaId, evento: 'AUTORIZADO' });
+                if (contactosRes.status === 'success') {
+                    const vars = { solicitante, idTicket: idTicketEnFoco, empresa: empresaNom, link, motivo: `Concepto: ${desc} | Total: ${formatCurrency(res.data.total)}`, asignado: '' };
+                    const fill = (tpl) => tpl ? tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '') : '';
+                    const msg = fill(waConfig.templates.EXTRA_admin || '*Indipris Travel*\nSe agrego un extra a *{idTicket}*.\n{motivo}\n{link}');
+                    if (msg) _sendWA(contactosRes.data.adminContactos || contactosRes.data.admins, msg, 'EXTRA', idTicketEnFoco);
+                }
+            }
+            // Recargar el modal de detalles para mostrar el nuevo extra
+            showLoading('Actualizando...');
+            await refreshDashboardSilencioso();
+            hideLoading();
+            await openDetalles(idTicketEnFoco);
+            Toast.fire({ text: res.data.mensaje, icon: 'success', timer: 2500, showConfirmButton: false });
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EDICIÓN DE TICKET (super admin)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+</script>

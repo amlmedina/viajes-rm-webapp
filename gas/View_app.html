@@ -1,0 +1,997 @@
+<!-- DASHBOARD -->
+<div id="dashboard-view" class="hidden min-h-screen p-4 md:p-10 max-w-7xl mx-auto fade-in">
+  <header
+    class="flex flex-col md:flex-row justify-between items-center mb-6 gap-6 bg-white p-6 rounded-[2rem] card-shadow">
+    <div class="flex items-center gap-3 md:gap-5 w-full md:w-auto min-w-0">
+      <div class="p-1 bg-pink-50 rounded-full shadow-inner hidden md:block shrink-0">
+        <img
+          src="https://media.licdn.com/dms/image/v2/D4E0BAQGi5xB-88mWyg/company-logo_200_200/B4EZXs45i2HMAI-/0/1743436094484/indipris_travel_logo?e=2147483647&v=beta&t=qjIrXCyI31f9YqjKpcmrJZJtbDNKyblQ_1tpTXUOwLI"
+          class="h-16 w-16 rounded-full object-cover" alt="Logo">
+      </div>
+      <div class="min-w-0">
+        <h2 class="text-base md:text-2xl font-black tracking-tight text-slate-800 truncate" id="user-display">
+          Cargando...</h2>
+        <div class="flex items-center gap-2 mt-1 flex-wrap">
+          <span id="dash-role"
+            class="px-2 md:px-3 py-0.5 md:py-1 bg-slate-800 text-white rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-wider"></span>
+          <span id="dash-empresa" class="text-[10px] md:text-xs font-bold text-slate-400 truncate"></span>
+          <button onclick="cerrarSesion()"
+            class="text-[8px] md:text-[9px] font-black text-pink-600 hover:text-pink-800 transition underline ml-2 md:ml-3 uppercase tracking-wider">Salir</button>
+        </div>
+        <div id="admin-tabs"
+          class="hidden mt-3 md:mt-4 gap-3 md:gap-4 pt-2 border-t border-slate-100 overflow-x-auto no-scrollbar items-center">
+          <button onclick="switchTab('operativo')" id="tab-operativo"
+            class="text-[10px] font-black tracking-widest text-pink-600 border-b-2 border-pink-600 pb-1 transition whitespace-nowrap">PANEL
+            OPERATIVO</button>
+          <button onclick="switchTab('financiero')" id="tab-financiero"
+            class="text-[10px] font-bold  tracking-widest text-slate-400 pb-1 hover:text-slate-600 transition whitespace-nowrap">REPORTE
+            FINANCIERO</button>
+          <select id="super-menu-select" onchange="switchTab(this.value);this.blur()"
+            class="hidden text-[10px] font-black tracking-widest text-slate-600 bg-slate-100 border-2 border-slate-200 rounded-xl px-3 py-1.5 outline-none cursor-pointer hover:border-pink-300 transition">
+            <option value="" disabled selected>⚙ ADMINISTRACIÓN</option>
+            <option value="usuarios">Gestión Usuarios</option>
+            <option value="notificaciones">Notificaciones</option>
+            <option value="reporte">Reporte Desempeño</option>
+            <option value="walog">Log WhatsApp</option>
+            <option value="rpdetalle">Reporte Detallado</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 md:gap-3 w-full md:w-auto shrink-0">
+      <button onclick="forceRefresh()" id="btn-refresh"
+        class="bg-white text-slate-500 border-2 border-slate-200 px-3 md:px-4 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-sm hover:bg-slate-50 active:scale-95 transition text-sm"
+        title="Actualizar">
+        ↻
+      </button>
+      <button onclick="showBulkUploadScreen()"
+        class="flex-1 md:flex-none bg-slate-100 text-slate-700 border-2 border-slate-200 px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-sm hover:bg-slate-200 active:scale-95 transition flex items-center justify-center gap-2 text-xs md:text-sm">
+        📋 CARGA MASIVA
+      </button>
+      <button onclick="showForm()"
+        class="flex-1 md:flex-none bg-indipris-main text-white px-4 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-lg shadow-pink-200 active:scale-95 transition flex items-center justify-center gap-2 text-xs md:text-sm">
+        + NUEVA SOLICITUD
+      </button>
+    </div>
+  </header>
+
+  <!-- Carga Masiva View -->
+  <section id="bulk-upload-view" class="hidden bg-white p-6 md:p-8 rounded-[2rem] card-shadow border border-slate-100 mb-8">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-sm md:text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+        📋 Carga Masiva desde Excel
+      </h2>
+      <button onclick="hideBulkUploadScreen()" class="text-xs font-black text-indigo-600 hover:text-indigo-800 transition">
+        ← VOLVER AL DASHBOARD
+      </button>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+      <div class="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col justify-between">
+        <div>
+          <h3 class="font-black text-slate-700 text-sm mb-2">1. Descargar Plantilla</h3>
+          <p class="text-xs text-slate-500 mb-4">Descarga el archivo Excel con el formato correcto para llenar las solicitudes y pasajeros.</p>
+        </div>
+        <button onclick="downloadExcelTemplate()" class="bg-indigo-600 text-white py-3 px-6 rounded-xl font-bold text-xs hover:bg-indigo-700 transition w-fit shadow-md">
+          📥 DESCARGAR TEMPLATE (.XLSX)
+        </button>
+      </div>
+
+      <div class="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col justify-between">
+        <div>
+          <h3 class="font-black text-slate-700 text-sm mb-2">2. Cargar Archivo Excel</h3>
+          <p class="text-xs text-slate-500 mb-4">Selecciona el archivo Excel (.xlsx o .xls) con tus solicitudes completadas.</p>
+        </div>
+        <label class="block w-full border-2 border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 rounded-xl p-4 text-center cursor-pointer transition">
+          <span class="text-xs font-bold text-slate-600" id="excel-file-label">Seleccionar archivo Excel...</span>
+          <input type="file" id="excel-file-input" accept=".xlsx, .xls" onchange="handleExcelSelect(event)" class="hidden">
+        </label>
+      </div>
+    </div>
+
+    <!-- Preview Container -->
+    <div id="excel-preview-container" class="hidden">
+      <h3 class="font-black text-slate-700 text-sm mb-4">Vista Previa de Solicitudes</h3>
+      <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm mb-6 max-h-[300px]">
+        <table class="w-full text-xs border-collapse min-w-[800px]">
+          <thead>
+            <tr class="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+              <th class="px-3 py-2 text-left">Fila</th>
+              <th class="px-3 py-2 text-left">Nombres</th>
+              <th class="px-3 py-2 text-left">A. Paterno</th>
+              <th class="px-3 py-2 text-left">A. Materno</th>
+              <th class="px-3 py-2 text-left">Nacimiento</th>
+              <th class="px-3 py-2 text-left">Viajero Frecuente</th>
+              <th class="px-3 py-2 text-left">Aerolínea</th>
+              <th class="px-3 py-2 text-left">Nº Vuelo</th>
+              <th class="px-3 py-2 text-left">Origen</th>
+              <th class="px-3 py-2 text-left">Destino</th>
+              <th class="px-3 py-2 text-left">Fecha Salida</th>
+              <th class="px-3 py-2 text-left">PNR</th>
+            </tr>
+          </thead>
+          <tbody id="excel-preview-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <div class="flex justify-end gap-3">
+        <button onclick="cancelExcelUpload()" class="bg-slate-100 text-slate-500 py-3 px-6 rounded-xl font-bold text-xs hover:bg-slate-200 transition">
+          CANCELAR
+        </button>
+        <button onclick="submitBulkRequests()" class="bg-indigo-600 text-white py-3 px-6 rounded-xl font-bold text-xs hover:bg-indigo-700 transition shadow-md">
+          CONFIRMAR Y CREAR SOLICITUDES
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Panel Operativo -->
+  <div id="dashboard-operativo">
+    <div id="admin-stats" class="hidden grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="bg-white p-6 rounded-3xl card-shadow border-l-4 border-emerald-500">
+        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest" id="stat-total-label">Inversión
+          Autorizada</p>
+        <p class="text-3xl font-black text-slate-800 mt-2" id="stat-total">$0.00</p>
+      </div>
+      <div class="bg-white p-6 rounded-3xl card-shadow border-l-4 border-amber-400">
+        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tickets Pendientes</p>
+        <p class="text-3xl font-black text-slate-800 mt-2" id="stat-pendientes">0</p>
+      </div>
+      <div class="bg-white p-6 rounded-3xl card-shadow border-l-4 border-blue-500">
+        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tickets Comprados</p>
+        <p class="text-3xl font-black text-slate-800 mt-2" id="stat-comprados">0</p>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl md:rounded-[2rem] card-shadow border border-slate-100 overflow-hidden">
+      <div class="p-3 md:p-6 border-b border-slate-100 bg-slate-50/50">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-black text-slate-700 text-sm md:text-lg tracking-tight">Solicitudes en Curso</h3>
+          <button id="btn-toggle-filters" onclick="document.getElementById('filters-panel').classList.toggle('hidden')"
+            class="md:hidden text-[9px] font-black text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg border border-pink-200">Filtros</button>
+        </div>
+        <div id="filters-panel" class="hidden md:flex flex-col md:flex-row gap-2 md:gap-3 flex-wrap">
+          <select id="filter-empresa" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white hidden">
+            <option value="">Todas las Empresas</option>
+          </select>
+          <select id="filter-ejecutivo" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white hidden">
+            <option value="">Todos los Ejecutivos</option>
+          </select>
+          <select id="filter-mes" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white"></select>
+          <select id="filter-estado" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white">
+            <option value="">Todos los Estados</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="Cotizado">Cotizado</option>
+            <option value="Autorizado">Autorizado</option>
+            <option value="Comprado">Comprado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+          <select id="filter-evento" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white hidden">
+            <option value="">Todos los Eventos</option>
+          </select>
+          <select id="filter-origen" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white">
+            <option value="">Todos Orígenes</option>
+          </select>
+          <select id="filter-destino" onchange="filterDashboard()"
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none bg-white">
+            <option value="">Todos Destinos</option>
+          </select>
+          <input type="text" id="search-dash" onkeyup="filterDashboard()" placeholder="Buscar..."
+            class="px-3 py-2 rounded-lg md:rounded-xl border-2 border-slate-200 text-xs md:text-sm font-bold outline-none w-full md:w-auto">
+          <button id="btn-csv-dash" onclick="descargarCSV()"
+            class="hidden px-3 py-2 rounded-lg md:rounded-xl border-2 border-emerald-300 bg-emerald-50 text-emerald-700 text-xs md:text-sm font-black hover:bg-emerald-100 transition whitespace-nowrap">⬇
+            CSV</button>
+        </div>
+      </div>
+      <div>
+        <table class="w-full text-left text-sm border-collapse">
+          <thead class="hidden md:table-header-group">
+            <tr
+              class="bg-white text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
+              <th class="px-4 py-4">ID Ticket</th>
+              <th class="px-4 py-4">Solicitante</th>
+              <th class="px-4 py-4">Pasajeros</th>
+              <th class="px-4 py-4">Resumen</th>
+              <th class="px-4 py-4">Estado</th>
+              <th class="px-4 py-4 text-center">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="dash-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel Financiero -->
+  <div id="dashboard-financiero" class="hidden mt-6 space-y-4">
+
+    <!-- Filtros -->
+    <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5">
+      <div class="flex flex-col md:flex-row gap-3 flex-wrap items-end">
+        <div class="flex-1 min-w-[140px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Desde</label>
+          <input type="date" id="fin-desde"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-indipris-main">
+        </div>
+        <div class="flex-1 min-w-[140px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Hasta</label>
+          <input type="date" id="fin-hasta"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-indipris-main">
+        </div>
+        <div class="flex-1 min-w-[140px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Empresa</label>
+          <select id="filter-fin-empresa"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Ejecutivo</label>
+          <select id="filter-fin-ejecutivo"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Estado Ticket</label>
+          <select id="filter-fin-estado"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todos</option>
+            <option value="Autorizado">Autorizado</option>
+            <option value="Comprado">Comprado</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tipo Servicio</label>
+          <select id="filter-fin-tipo"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todos</option>
+            <option value="VUELO">✈️ Vuelo</option>
+            <option value="HOTEL">🏨 Hotel</option>
+            <option value="BUS">🚌 Autobús</option>
+            <option value="Extra">➕ Extra</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Evento</label>
+          <select id="filter-fin-evento"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Origen</label>
+          <select id="filter-fin-origen"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Destino</label>
+          <select id="filter-fin-destino"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button onclick="aplicarFiltrosFinanzas()"
+            class="bg-indipris-main text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-pink-200 hover:bg-pink-700 transition uppercase tracking-widest whitespace-nowrap">Aplicar</button>
+          <button onclick="exportarCSVFinanzas()"
+            class="bg-emerald-50 text-emerald-700 border-2 border-emerald-300 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-emerald-100 transition whitespace-nowrap">⬇
+            CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Spinner de carga propio del tab -->
+    <div id="fin-loading" class="hidden bg-white rounded-2xl card-shadow border border-slate-100 p-16 text-center">
+      <p class="font-black text-slate-400 animate-pulse text-sm">Calculando reporte...</p>
+    </div>
+
+    <!-- KPI cards -->
+    <div id="fin-kpis" class="hidden grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+
+    <!-- Gráficas -->
+    <div id="fin-charts" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5">
+        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Facturación por Mes</p>
+        <div class="relative h-56"><canvas id="chart-mensual"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5">
+        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Distribución por Tipo de Servicio
+        </p>
+        <div class="relative h-56 flex items-center justify-center"><canvas id="chart-tipo"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5">
+        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Top Empresas por Facturación</p>
+        <div class="relative h-56"><canvas id="chart-empresas"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5">
+        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Facturación Acumulada</p>
+        <div class="relative h-56"><canvas id="chart-acumulado"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Tabla de detalle -->
+    <div id="fin-tabla" class="hidden bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/60 flex justify-between items-center">
+        <h4 class="font-black text-slate-700 text-sm uppercase tracking-widest">Detalle por Ticket</h4>
+        <span id="fin-tabla-count" class="text-[9px] font-black text-slate-400"></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse min-w-[900px]">
+          <thead>
+            <tr
+              class="bg-white text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+              <th class="px-5 py-3 text-left cursor-pointer hover:text-slate-600" onclick="sortFinanzas('id')">Ticket ↕
+              </th>
+              <th class="px-5 py-3 text-left cursor-pointer hover:text-slate-600" onclick="sortFinanzas('fecha')">Fecha
+                ↕</th>
+              <th class="px-5 py-3 text-left">Empresa</th>
+              <th class="px-5 py-3 text-left">Ejecutivo</th>
+              <th class="px-5 py-3 text-left">Tipo</th>
+              <th class="px-5 py-3 text-left">Origen</th>
+              <th class="px-5 py-3 text-left">Destino</th>
+              <th class="px-5 py-3 text-right cursor-pointer hover:text-slate-600"
+                onclick="sortFinanzas('facturacion')">Facturación ↕</th>
+              <th class="px-5 py-3 text-right cursor-pointer hover:text-slate-600 fin-col-super"
+                onclick="sortFinanzas('costo')">Costo Neto ↕</th>
+              <th class="px-5 py-3 text-right cursor-pointer hover:text-slate-600 fin-col-super"
+                onclick="sortFinanzas('utilidad')">Utilidad ↕</th>
+              <th class="px-5 py-3 text-right fin-col-super">Margen</th>
+            </tr>
+          </thead>
+          <tbody id="fin-tabla-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Estado inicial (sin datos cargados) -->
+    <div id="fin-empty" class="bg-white rounded-2xl p-16 text-center card-shadow border border-slate-100">
+      <p class="text-slate-300 font-black italic text-sm">Selecciona un rango y presiona Aplicar para ver el reporte.
+      </p>
+    </div>
+  </div>
+
+  <!-- Panel Usuarios -->
+  <div id="dashboard-usuarios"
+    class="hidden bg-white rounded-[2rem] card-shadow border border-slate-100 overflow-hidden mt-6">
+    <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+      <h3 class="font-black text-slate-700 text-lg tracking-tight">Directorio</h3>
+      <button onclick="openUserModal()"
+        class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[10px] font-black shadow-md hover:bg-slate-800 transition">+
+        NUEVO USUARIO</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm border-collapse min-w-[500px]">
+        <tbody id="usuarios-body" class="divide-y divide-slate-50"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Panel Notificaciones -->
+  <div id="dashboard-notificaciones" class="hidden mt-6 space-y-4">
+
+    <!-- Buscador de empresas + botón agregar -->
+    <div
+      class="bg-white rounded-2xl card-shadow border border-slate-100 p-4 flex flex-col md:flex-row gap-3 items-center">
+      <input type="text" id="notif-search" placeholder="Buscar empresa..." oninput="filterNotifCards(this.value)"
+        class="flex-1 px-4 py-2 rounded-xl border-2 border-slate-200 text-sm font-bold outline-none focus:border-indipris-main">
+      <button onclick="addEmpresaNotif()"
+        class="shrink-0 bg-indipris-main text-white px-5 py-2 rounded-xl text-[10px] font-black shadow-lg shadow-pink-200 hover:bg-pink-700 transition uppercase tracking-widest">+
+        Agregar Empresa</button>
+      <p class="text-[9px] font-bold text-slate-400 italic shrink-0">Los cambios se guardan automáticamente.</p>
+    </div>
+
+    <!-- Cards por empresa -->
+    <div id="notif-container" class="space-y-4"></div>
+
+    <!-- Estado vacío -->
+    <div id="notif-empty"
+      class="hidden bg-white rounded-2xl card-shadow p-16 text-center text-slate-300 font-black italic text-sm">
+      No hay empresas con tickets aún.
+    </div>
+
+    <!-- Info fallback -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4 items-start">
+      <span class="text-2xl shrink-0">⚠️</span>
+      <div>
+        <p class="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Empresas sin configuración</p>
+        <p class="text-xs font-bold text-amber-700">Las empresas sin ejecutivos asignados enviarán avisos a
+          <strong>todos</strong> los miembros del equipo Indipris como fallback.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel Reporte Desempeño (solo super) -->
+  <div id="dashboard-reporte" class="hidden mt-6 space-y-4">
+
+    <!-- Filtros -->
+    <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5 flex flex-col md:flex-row gap-4 items-end">
+      <div class="flex-1">
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Desde</label>
+        <input type="date" id="reporte-desde"
+          class="w-full border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 outline-none focus:border-indipris-main">
+      </div>
+      <div class="flex-1">
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Hasta</label>
+        <input type="date" id="reporte-hasta"
+          class="w-full border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 outline-none focus:border-indipris-main">
+      </div>
+      <button onclick="cargarReporteDesempeno()"
+        class="shrink-0 bg-indipris-main text-white px-6 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-pink-200 hover:bg-pink-700 transition uppercase tracking-widest">Generar
+        Reporte</button>
+    </div>
+
+    <!-- Cuerpo del reporte -->
+    <div id="reporte-body">
+      <div
+        class="bg-white rounded-2xl p-16 text-center text-slate-300 font-black italic text-sm card-shadow border border-slate-100">
+        Selecciona un rango de fechas y presiona Generar Reporte.
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel Log WhatsApp (solo super) -->
+  <div id="dashboard-walog" class="hidden mt-6 space-y-4">
+
+    <!-- Configuración de WhatsApp -->
+    <div class="bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden">
+      <button onclick="toggleWaConfig()"
+        class="w-full px-5 py-4 flex justify-between items-center hover:bg-slate-50 transition">
+        <div class="text-left">
+          <h3 class="font-black text-slate-700 text-sm tracking-tight">Configuración de WhatsApp</h3>
+          <p class="text-[9px] font-bold text-slate-400">API Key y plantillas de mensajes</p>
+        </div>
+        <span id="wa-config-arrow" class="text-slate-400 font-bold transition-transform">▼</span>
+      </button>
+      <div id="wa-config-panel" class="hidden border-t border-slate-100 p-5 space-y-5">
+        <!-- API Key -->
+        <div>
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">API Key
+            (textmebot.com)</label>
+          <div class="flex gap-2">
+            <input type="text" id="wa-api-key" placeholder="Tu API key..."
+              class="flex-1 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-mono font-bold outline-none focus:border-indipris-main bg-white">
+            <button onclick="saveWaConfig()"
+              class="shrink-0 bg-emerald-500 text-white px-5 py-2 rounded-xl text-[10px] font-black hover:bg-emerald-600 transition uppercase tracking-widest">Guardar
+              Todo</button>
+          </div>
+        </div>
+        <!-- Variables disponibles -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Variables disponibles en
+            plantillas:</p>
+          <div class="flex flex-wrap gap-2">
+            <code
+              class="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded font-bold text-pink-600">{solicitante}</code>
+            <code
+              class="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded font-bold text-pink-600">{idTicket}</code>
+            <code
+              class="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded font-bold text-pink-600">{empresa}</code>
+            <code
+              class="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded font-bold text-pink-600">{link}</code>
+            <code
+              class="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded font-bold text-pink-600">{motivo}</code>
+            <code
+              class="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded font-bold text-pink-600">{asignado}</code>
+          </div>
+          <p class="text-[8px] text-slate-400 mt-2 font-bold">Usa \n para saltos de línea. Usa *texto* para negritas en
+            WhatsApp.</p>
+        </div>
+        <!-- Templates -->
+        <div id="wa-templates-container" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Header del log -->
+    <div
+      class="bg-white rounded-2xl card-shadow border border-slate-100 p-5 flex flex-col md:flex-row gap-3 items-center justify-between">
+      <div>
+        <h3 class="font-black text-slate-700 text-lg tracking-tight">Registro de Mensajes</h3>
+        <p class="text-[9px] font-bold text-slate-400">Últimos 500 mensajes enviados por el sistema.</p>
+      </div>
+      <button onclick="loadWaLogs()"
+        class="shrink-0 bg-indipris-main text-white px-5 py-2 rounded-xl text-[10px] font-black shadow-lg shadow-pink-200 hover:bg-pink-700 transition uppercase tracking-widest">Actualizar</button>
+    </div>
+    <div id="walog-container" class="bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse min-w-[700px]">
+          <thead>
+            <tr
+              class="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+              <th class="px-4 py-3 text-left">Fecha/Hora</th>
+              <th class="px-4 py-3 text-left">Destinatario</th>
+              <th class="px-4 py-3 text-left">Teléfono</th>
+              <th class="px-4 py-3 text-left">Evento</th>
+              <th class="px-4 py-3 text-left">Ticket</th>
+              <th class="px-4 py-3 text-left">Enviado Por</th>
+              <th class="px-4 py-3 text-left">Status</th>
+              <th class="px-4 py-3 text-left">Mensaje</th>
+            </tr>
+          </thead>
+          <tbody id="walog-body" class="divide-y divide-slate-50">
+            <tr>
+              <td colspan="8" class="p-16 text-center text-slate-300 font-black italic text-xs">Presiona Actualizar para
+                cargar los logs.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel Reporte Detallado (solo super) -->
+  <div id="dashboard-rpdetalle" class="hidden mt-6 space-y-4">
+    <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5">
+      <h3 class="font-black text-slate-700 text-lg tracking-tight mb-4">Reporte Detallado por Pasajero</h3>
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Desde</label>
+          <input type="date" id="rpdet-desde"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Hasta</label>
+          <input type="date" id="rpdet-hasta"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+        </div>
+        <div class="flex-1 min-w-[130px]">
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Empresa</label>
+          <select id="rpdet-empresa"
+            class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none bg-white focus:border-indipris-main">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button onclick="loadReporteDetallado()"
+            class="bg-indipris-main text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-pink-200 hover:bg-pink-700 transition uppercase tracking-widest">Generar</button>
+          <button onclick="exportarCSVDetallado()"
+            class="bg-emerald-50 text-emerald-700 border-2 border-emerald-300 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-emerald-100 transition">⬇
+            CSV</button>
+        </div>
+      </div>
+    </div>
+    <div id="rpdet-count" class="hidden text-right text-[9px] font-black text-slate-400 px-2"></div>
+    <div id="rpdet-tabla" class="hidden bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden">
+      <div class="overflow-x-auto" style="max-height:70vh;overflow-y:auto">
+        <table class="w-full text-xs border-collapse min-w-[1100px]">
+          <thead class="sticky top-0 z-10">
+            <tr
+              class="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+              <th class="px-3 py-3 text-left">Pasajero</th>
+              <th class="px-3 py-3 text-left">Fecha Sol.</th>
+              <th class="px-3 py-3 text-left">Nacimiento</th>
+              <th class="px-3 py-3 text-left">REQ</th>
+              <th class="px-3 py-3 text-left">Clave</th>
+              <th class="px-3 py-3 text-left">Aerolínea</th>
+              <th class="px-3 py-3 text-left">Salida</th>
+              <th class="px-3 py-3 text-left">Regreso</th>
+              <th class="px-3 py-3 text-left">Ruta</th>
+              <th class="px-3 py-3 text-right">Subtotal</th>
+              <th class="px-3 py-3 text-right">Comisión</th>
+              <th class="px-3 py-3 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="rpdet-body" class="divide-y divide-slate-50"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="rpdet-empty"
+      class="bg-white rounded-2xl p-12 text-center card-shadow border border-slate-100 text-slate-300 font-black italic text-xs">
+      Selecciona un rango y presiona Generar.
+    </div>
+  </div>
+
+</div>
+<div id="modal-detalles" class="hidden fixed inset-0 z-[60] bg-slate-50 overflow-hidden flex flex-col">
+  <!-- Header: ID + Estado + Evento + Acciones en una línea -->
+  <div class="px-3 py-2 md:px-6 md:py-2.5 border-b border-slate-200 bg-white shrink-0">
+    <div class="flex items-center gap-2 justify-between">
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <button onclick="closeModal('modal-detalles')"
+          class="text-slate-400 hover:text-slate-800 bg-slate-100 w-8 h-8 rounded-full flex items-center justify-center transition shrink-0 text-sm font-bold">←</button>
+        <span class="font-black text-slate-800 text-sm md:text-base truncate" id="det-titulo">TK-000000</span>
+        <span id="det-badge-estado" class="shrink-0"></span>
+        <span id="det-empresa" class="text-[10px] text-slate-400 font-bold truncate hidden md:inline"></span>
+        <span id="det-evento-inline"
+          class="text-[9px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full truncate hidden"></span>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <div id="det-status-changer" class="hidden">
+          <button onclick="mostrarCambioEstado()"
+            class="text-[8px] md:text-[8px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-2.5 py-2 md:py-1 rounded-md border border-slate-200 transition uppercase min-h-[36px] md:min-h-0">Estado</button>
+        </div>
+        <div id="det-acciones-menu" class="relative">
+          <button onclick="document.getElementById('det-acciones-dropdown').classList.toggle('hidden')"
+            class="text-[8px] md:text-[8px] font-black text-pink-600 bg-pink-50 hover:bg-pink-100 px-2.5 py-2 md:py-1 rounded-md border border-pink-200 transition uppercase min-h-[36px] md:min-h-0">⚙
+            Acciones</button>
+          <div id="det-acciones-dropdown"
+            class="hidden absolute right-0 top-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-2xl z-50 min-w-[200px] py-1">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Notas inline (si existen) -->
+  <div id="det-notas-container" class="hidden bg-amber-50 border-b-2 border-amber-300 px-3 py-1.5 md:px-6 shrink-0">
+    <span class="text-[8px] font-black text-amber-600 uppercase mr-1">⚠️</span>
+    <span class="text-[11px] font-bold text-amber-900" id="det-notas"></span>
+  </div>
+  <!-- Contenido scrolleable -->
+  <div class="flex-1 overflow-y-auto no-scrollbar">
+    <div class="max-w-[1200px] mx-auto px-3 py-2 md:px-6 md:py-3 space-y-2">
+      <div class="hidden" id="det-evento-container"></div>
+      <!-- Info grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        <div class="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5">
+          <h4 class="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Itinerario</h4>
+          <div id="det-servicios"></div>
+        </div>
+        <div class="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5">
+          <h4 class="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Pasajeros</h4>
+          <div id="det-pasajeros"></div>
+        </div>
+      </div>
+      <!-- Opciones -->
+      <div id="seccion-opciones-mostrar" class="hidden">
+        <h4 class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Cotizaciones <span
+            id="det-opciones-hint" class="text-pink-400 font-bold normal-case hidden">— toca para seleccionar</span>
+        </h4>
+        <div id="auth-options-list" class="space-y-2"></div>
+      </div>
+      <div id="det-sin-opciones"
+        class="hidden text-center py-3 text-slate-300 font-bold text-[10px] bg-white rounded-lg border border-slate-200">
+        Sin cotizaciones aún.</div>
+    </div>
+  </div>
+  <!-- Sticky footer -->
+  <div id="det-float-autorizar"
+    class="hidden px-3 py-2 md:px-6 md:py-2.5 bg-white border-t-2 border-slate-200 shrink-0 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]">
+    <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2">
+      <div class="flex items-center gap-2 order-2 md:order-1">
+        <button id="btn-rechazar-footer" onclick="rechazarTodas()"
+          class="hidden flex-1 md:flex-none bg-red-50 text-red-500 border border-red-200 px-4 min-h-[44px] md:min-h-0 md:py-1.5 rounded-lg text-[10px] md:text-[8px] font-black hover:bg-red-100 transition uppercase text-center">Rechazar
+          Todas</button>
+        <span class="text-[10px] md:text-[9px] font-bold text-slate-400 hidden md:inline"><span
+            id="det-seleccion-count">0</span> seleccionada(s)</span>
+      </div>
+      <button id="btn-autorizar-seleccion" onclick="authorizeSelection()"
+        class="w-full md:w-auto bg-emerald-500 text-white px-5 min-h-[48px] md:min-h-0 md:py-1.5 rounded-lg text-sm md:text-[9px] font-black shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition uppercase tracking-widest order-1 md:order-2">✓
+        Autorizar Selección</button>
+    </div>
+  </div>
+</div>
+<div id="modal-opt"
+  class="hidden fixed inset-0 bg-slate-900/80 z-[70] flex items-end md:items-center justify-center md:p-4 backdrop-blur-sm">
+  <div
+    class="bg-white w-full max-w-4xl shadow-2xl flex flex-col h-[92vh] md:h-auto md:max-h-[90vh] rounded-t-[2rem] md:rounded-b-[2rem] slide-up-mobile relative overflow-hidden">
+    <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 md:hidden shrink-0"></div>
+    <div class="px-6 pb-4 pt-2 md:p-8 border-b border-slate-100 flex justify-between items-start shrink-0">
+      <div>
+        <h3 class="text-2xl font-black mb-1 tracking-tight">Cargar Cotizaciones</h3>
+        <p class="text-xs font-bold text-slate-400">Sube opciones estructuradas por servicio.</p>
+      </div>
+      <button onclick="closeModal('modal-opt')"
+        class="text-slate-300 hover:text-slate-600 font-bold text-2xl leading-none bg-slate-50 w-10 h-10 rounded-full flex items-center justify-center -mt-1 md:mt-0">✕</button>
+    </div>
+    <div class="p-6 md:p-8 overflow-y-auto no-scrollbar flex-1 bg-slate-50/50">
+      <input type="hidden" id="opt-idticket">
+      <div id="opciones-container" class="space-y-6"></div>
+    </div>
+    <div class="p-4 md:p-6 bg-white border-t border-slate-100 shrink-0 space-y-3">
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" id="opt-aplica-iva" checked class="w-5 h-5 accent-blue-600 rounded">
+        <span class="text-xs font-bold text-slate-600">Aplicar IVA (16%) al total</span>
+      </label>
+      <button onclick="saveAllOptions()" id="btn-save-opt"
+        class="w-full bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg shadow-blue-200 active:scale-95 transition text-sm">ENVIAR
+        COTIZACIÓN AL CLIENTE</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL USUARIO — CORREGIDO: pre-carga datos del usuario al editar -->
+<div id="modal-usuario"
+  class="hidden fixed inset-0 bg-slate-900/80 z-50 flex items-end md:items-center justify-center md:p-4">
+  <div
+    class="bg-white w-full max-w-md shadow-2xl flex flex-col rounded-t-[2rem] md:rounded-b-[2rem] slide-up-mobile relative overflow-hidden">
+    <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 md:hidden shrink-0"></div>
+    <div class="px-6 pb-4 pt-2 md:p-8 flex justify-between items-center border-b border-slate-100">
+      <h3 class="text-2xl font-black" id="usr-modal-title">Usuario</h3>
+      <button onclick="closeModal('modal-usuario')"
+        class="text-slate-300 hover:text-slate-600 font-bold text-2xl leading-none bg-slate-50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+    </div>
+    <div class="p-6 md:p-8 space-y-5 overflow-y-auto">
+      <input type="text" id="usr-login" placeholder="Usuario Login"
+        class="w-full border-b-2 border-slate-200 py-3 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main">
+      <input type="password" id="usr-pass" placeholder="Contraseña (vacío = no cambia)"
+        class="w-full border-b-2 border-slate-200 py-3 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main">
+      <select id="usr-role"
+        class="w-full border-b-2 border-slate-200 py-3 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main">
+        <option value="viajero">Viajero</option>
+        <option value="admin">Admin Empresa</option>
+        <option value="indipris">Equipo Indipris</option>
+        <option value="super">Super Admin</option>
+      </select>
+      <div class="space-y-2">
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Empresas Asignadas</label>
+        <input type="text" id="usr-empresa-search" placeholder="Buscar empresa..."
+          oninput="filterEmpresaSelect(this.value)"
+          class="w-full border-b-2 border-slate-200 py-2 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+        <div id="usr-empresa-list"
+          class="max-h-40 overflow-y-auto border-2 border-slate-200 rounded-xl p-2 space-y-1 bg-slate-50 no-scrollbar">
+          <!-- checkboxes generados dinámicamente -->
+        </div>
+        <p id="usr-empresa-count" class="text-[9px] text-slate-400 font-bold text-right"></p>
+      </div>
+      <input type="email" id="usr-email" placeholder="Correo"
+        class="w-full border-b-2 border-slate-200 py-3 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main">
+      <input type="number" id="usr-tel" placeholder="Teléfono a 10 dígitos"
+        class="w-full border-b-2 border-slate-200 py-3 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main">
+      <label
+        class="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 cursor-pointer mt-4 hover:bg-orange-100 transition">
+        <input type="checkbox" id="usr-vacaciones" class="w-5 h-5 accent-orange-500 rounded">
+        <div>
+          <span class="text-xs font-black text-orange-700 uppercase tracking-widest">Modo Vacaciones</span>
+          <p class="text-[9px] text-orange-500 font-bold mt-0.5">No se le asignarán nuevas solicitudes</p>
+        </div>
+      </label>
+      <button id="btn-save-usr" onclick="saveUser()"
+        class="w-full bg-slate-900 text-white py-4 rounded-xl font-black mt-6 shadow-lg hover:bg-slate-800 transition">GUARDAR
+        USUARIO</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORMULARIO NUEVA SOLICITUD -->
+<div id="app-view" class="hidden min-h-screen p-4 md:p-10 max-w-4xl mx-auto fade-in">
+  <header class="flex justify-between items-center mb-8 border-b-2 border-slate-100 pb-6">
+    <div>
+      <h1 class="text-3xl font-black tracking-tight text-slate-800">Crear Ticket</h1>
+      <p class="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest" id="form-policy"></p>
+      <!-- Selector de empresa: solo aparece cuando el usuario tiene más de una -->
+      <div id="form-empresa-selector" class="hidden mt-3">
+        <label class="text-[9px] font-black text-pink-600 uppercase tracking-widest block mb-1">Solicitar a nombre
+          de:</label>
+        <select id="form-empresa-select"
+          class="border-2 border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-700 outline-none focus:border-indipris-main text-sm bg-white">
+        </select>
+      </div>
+    </div>
+    <button onclick="returnToDashboard()"
+      class="bg-white text-slate-400 px-6 py-3 rounded-xl border-2 border-slate-100 font-bold hover:bg-slate-50 transition text-sm shadow-sm">←
+      Regresar</button>
+  </header>
+  <div class="space-y-8 pb-24">
+    <section class="bg-white p-6 md:p-8 rounded-[2rem] card-shadow border border-slate-100">
+      <div class="flex justify-between items-center mb-6 border-b border-slate-50 pb-4">
+        <h2 class="text-[10px] md:text-xs font-black text-pink-600 uppercase tracking-[0.2em]">1. Servicios Requeridos
+        </h2>
+        <button onclick="addService()"
+          class="bg-pink-50 text-pink-600 px-4 py-2 rounded-full text-[9px] md:text-[10px] font-black hover:bg-pink-100 transition shadow-sm">+
+          AÑADIR SERVICIO</button>
+      </div>
+      <div id="services-container" class="space-y-6"></div>
+    </section>
+    <section class="bg-white p-6 md:p-8 rounded-[2rem] card-shadow border border-slate-100">
+      <div class="flex justify-between items-center mb-6 border-b border-slate-50 pb-4">
+        <h2 class="text-[10px] md:text-xs font-black text-pink-600 uppercase tracking-[0.2em]">2. Pasajeros / Huéspedes
+        </h2>
+      </div>
+      <div id="passengers-container" class="space-y-6"></div>
+      <button onclick="addPassenger()"
+        class="mt-6 w-full bg-pink-50 text-pink-600 px-4 py-3 rounded-xl text-[10px] font-black hover:bg-pink-100 transition shadow-sm border-2 border-dashed border-pink-200">+
+        AÑADIR PASAJERO</button>
+    </section>
+    <section class="bg-white p-6 md:p-8 rounded-[2rem] card-shadow border border-slate-100">
+      <h2 class="text-[10px] md:text-xs font-black text-pink-600 uppercase tracking-[0.2em] mb-4">3. Evento</h2>
+      <div class="space-y-2">
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Nombre del Evento</label>
+        <input type="text" id="req-evento" list="lista-eventos" placeholder="Ej. Congreso Anual 2025, Lanzamiento Q1..."
+          oninput="handleEventoInput(this.value)"
+          class="w-full border-b-2 border-slate-200 py-3 font-bold text-slate-700 outline-none focus:border-pink-500 bg-transparent text-sm">
+        <p class="text-[9px] text-slate-400 font-bold">Si es un evento nuevo, se guardará automáticamente en el catálogo
+          de tu empresa.</p>
+      </div>
+    </section>
+    <section class="bg-white p-6 md:p-8 rounded-[2rem] card-shadow border border-slate-100">
+      <h2 class="text-[10px] md:text-xs font-black text-pink-600 uppercase tracking-[0.2em] mb-4">4. Notas Adicionales
+      </h2>
+      <textarea id="req-notes" rows="2" placeholder="Ej: Requiero factura urgente..."
+        class="w-full border-b-2 border-slate-200 p-4 outline-none font-bold text-slate-600 bg-slate-50 rounded-xl focus:border-pink-500"></textarea>
+    </section>
+    <!-- Advertencia de solape de pasajeros -->
+    <div id="aviso-solape" class="hidden bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm"></div>
+
+    <button id="btn-submit" onclick="submitRequest()"
+      class="w-full bg-indipris-main text-white py-6 rounded-[2rem] font-black text-lg md:text-xl shadow-xl shadow-pink-200 active:scale-95 transition flex justify-center items-center gap-4">
+      <span id="btn-submit-text">ENVIAR A COTIZACIÓN</span>
+      <svg id="spinner" class="animate-spin h-6 w-6 text-white hidden" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+        </path>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- PANTALLA DE ÉXITO -->
+<div id="success-view" class="hidden min-h-screen flex items-center justify-center p-4">
+  <div
+    class="bg-white p-12 md:p-16 rounded-[3rem] shadow-2xl text-center max-w-sm w-full border-t-[16px] border-indipris-main fade-in">
+    <div
+      class="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+      <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path>
+      </svg>
+    </div>
+    <h2 class="text-3xl font-black text-slate-800 mb-4 tracking-tight">¡Éxito!</h2>
+    <p class="text-slate-400 font-bold mb-10 text-sm leading-relaxed">Operación completada.</p>
+    <button onclick="returnToDashboard()"
+      class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black tracking-widest uppercase text-xs shadow-lg active:scale-95">Ir
+      al Inicio</button>
+  </div>
+</div>
+
+<!-- MODAL EDITAR TICKET (solo super) -->
+<div id="modal-edit-ticket"
+  class="hidden fixed inset-0 bg-slate-900/80 z-[75] flex items-end md:items-center justify-center md:p-4 backdrop-blur-sm">
+  <div
+    class="bg-white w-full max-w-4xl shadow-2xl flex flex-col h-[95vh] md:h-auto md:max-h-[95vh] rounded-t-[2rem] md:rounded-b-[2rem] slide-up-mobile relative overflow-hidden border-t-8 border-violet-500">
+    <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 md:hidden shrink-0"></div>
+    <div class="px-6 pb-4 pt-2 md:p-6 border-b border-slate-100 flex justify-between items-start shrink-0">
+      <div>
+        <h3 class="text-xl font-black tracking-tight text-slate-800">✏️ Editar Ticket <span id="edit-ticket-id"
+            class="text-violet-600 font-mono text-sm"></span></h3>
+        <p class="text-xs font-bold text-slate-400 mt-1">Solo Super Admin — los cambios reemplazan los datos actuales.
+        </p>
+      </div>
+      <button onclick="closeModal('modal-edit-ticket')"
+        class="text-slate-300 hover:text-slate-600 font-bold text-2xl leading-none bg-slate-50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+    </div>
+    <div class="p-6 overflow-y-auto no-scrollbar flex-1 space-y-6 bg-slate-50/30">
+      <!-- Servicios -->
+      <section class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-50 pb-3">
+          <h4 class="text-[10px] font-black text-violet-600 uppercase tracking-widest">Servicios</h4>
+          <button onclick="editAddService()"
+            class="bg-violet-50 text-violet-600 px-4 py-2 rounded-full text-[9px] font-black hover:bg-violet-100 transition shadow-sm">+
+            AÑADIR SERVICIO</button>
+        </div>
+        <div id="edit-services-container" class="space-y-4"></div>
+      </section>
+      <!-- Pasajeros -->
+      <section class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-50 pb-3">
+          <h4 class="text-[10px] font-black text-violet-600 uppercase tracking-widest">Pasajeros</h4>
+          <button onclick="editAddPassenger()"
+            class="bg-violet-50 text-violet-600 px-4 py-2 rounded-full text-[9px] font-black hover:bg-violet-100 transition shadow-sm">+
+            AÑADIR PASAJERO</button>
+        </div>
+        <div id="edit-passengers-container" class="space-y-4"></div>
+      </section>
+    </div>
+    <div class="p-4 md:p-6 bg-white border-t border-slate-100 flex flex-col md:flex-row gap-3 justify-end shrink-0">
+      <button onclick="closeModal('modal-edit-ticket')"
+        class="w-full md:w-auto bg-slate-100 text-slate-500 px-6 py-3 rounded-xl font-black text-xs hover:bg-slate-200 transition uppercase tracking-widest">Cancelar</button>
+      <button onclick="saveEditTicket()" id="btn-save-edit-ticket"
+        class="w-full md:w-auto bg-violet-600 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-violet-200 hover:bg-violet-700 transition text-xs uppercase tracking-widest">✓
+        Guardar Cambios</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-pnr"
+  class="hidden fixed inset-0 bg-slate-900/80 z-[80] flex items-end md:items-center justify-center md:p-4 backdrop-blur-sm">
+  <div
+    class="bg-white w-full max-w-2xl shadow-2xl flex flex-col rounded-t-[2rem] md:rounded-b-[2rem] slide-up-mobile relative overflow-hidden border-t-8 border-indigo-500">
+    <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 md:hidden shrink-0"></div>
+    <div class="px-6 pb-4 pt-2 md:p-6 border-b border-slate-100 flex justify-between items-start shrink-0">
+      <div>
+        <h3 class="text-xl font-black tracking-tight text-slate-800">Revisar y Confirmar PNR</h3>
+        <p class="text-xs font-bold text-slate-400 mt-1">Verifica o actualiza los datos de vuelo antes de confirmar la
+          compra.</p>
+      </div>
+      <button onclick="closeModal('modal-pnr')"
+        class="text-slate-300 hover:text-slate-600 font-bold text-2xl leading-none bg-slate-50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+    </div>
+    <div class="p-6 overflow-y-auto no-scrollbar flex-1 space-y-4 bg-slate-50/30" id="pnr-fields-container">
+      <!-- Se genera dinámicamente -->
+    </div>
+    
+    <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/30 shrink-0">
+      <label class="text-[9px] font-black text-indigo-600 uppercase tracking-widest block mb-2">Comprobante de Compra (Imagen)</label>
+      <label id="comprobante-upload-label" class="w-full h-20 border-2 border-dashed border-indigo-200 bg-indigo-50/5 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 transition relative overflow-hidden">
+        <span id="comprobante-upload-text" class="text-[10px] font-black text-indigo-600">📎 Subir captura o comprobante de compra</span>
+        <input type="file" id="comprobante-file-input" class="hidden" accept="image/*" onchange="uploadComprobanteCompra(this)">
+      </label>
+    </div>
+
+    <div class="p-4 md:p-6 bg-white border-t border-slate-100 flex flex-col md:flex-row gap-3 justify-end shrink-0">
+      <button onclick="closeModal('modal-pnr')"
+        class="w-full md:w-auto bg-slate-100 text-slate-500 px-6 py-3 rounded-xl font-black text-xs hover:bg-slate-200 transition uppercase tracking-widest">Cancelar</button>
+      <button onclick="confirmarCompraConPNR()" id="btn-confirmar-compra"
+        class="w-full md:w-auto bg-indigo-600 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition text-xs uppercase tracking-widest">✓
+        Confirmar Compra</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AGREGAR EXTRA -->
+<div id="modal-extra"
+  class="hidden fixed inset-0 bg-slate-900/80 z-[82] flex items-end md:items-center justify-center md:p-4 backdrop-blur-sm">
+  <div
+    class="bg-white w-full max-w-md shadow-2xl flex flex-col rounded-t-[2rem] md:rounded-b-[2rem] slide-up-mobile relative overflow-hidden border-t-8 border-amber-400">
+    <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 md:hidden shrink-0"></div>
+    <div class="px-6 pb-4 pt-2 md:p-6 border-b border-slate-100 flex justify-between items-start shrink-0">
+      <div>
+        <h3 class="text-xl font-black tracking-tight text-slate-800">➕ Agregar Extra</h3>
+        <p class="text-xs font-bold text-slate-400 mt-1">Suma costos adicionales a la tarifa del ticket.</p>
+      </div>
+      <button onclick="closeModal('modal-extra')"
+        class="text-slate-300 hover:text-slate-600 font-bold text-2xl leading-none bg-slate-50 w-10 h-10 rounded-full flex items-center justify-center">✕</button>
+    </div>
+    <div class="p-6 space-y-5 overflow-y-auto no-scrollbar">
+      <!-- Descripción -->
+      <div>
+        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Concepto / Descripción
+          <span class="text-red-500">*</span></label>
+        <input type="text" id="extra-desc" placeholder="Ej. Cambio de vuelo, equipaje adicional..."
+          class="w-full border-b-2 border-slate-200 py-2 font-bold text-slate-700 outline-none focus:border-amber-400 bg-transparent text-sm">
+      </div>
+      <!-- Costos -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Costo Base
+            Extra</label>
+          <input type="number" id="extra-costo" placeholder="0.00" oninput="calcularResumenExtra()"
+            class="w-full border-b-2 border-slate-200 py-2 font-bold text-slate-700 outline-none focus:border-amber-400 bg-transparent text-sm">
+        </div>
+        <div>
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fee Extra</label>
+          <input type="number" id="extra-fee" placeholder="0.00" oninput="calcularResumenExtra()"
+            class="w-full border-b-2 border-slate-200 py-2 font-bold text-slate-700 outline-none focus:border-amber-400 bg-transparent text-sm">
+        </div>
+      </div>
+      <!-- Costo proveedor privado -->
+      <div>
+        <label class="text-[9px] font-black text-red-500 uppercase tracking-widest block mb-1">🔒 Costo Neto Proveedor
+          (Privado)</label>
+        <input type="number" id="extra-cp" placeholder="0.00"
+          class="w-full border-b-2 border-red-200 py-2 font-bold text-red-700 outline-none focus:border-red-400 bg-red-50/30 rounded-lg px-2 text-sm">
+      </div>
+      <!-- Resumen calculado -->
+      <div id="extra-resumen" class="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2 hidden">
+        <p class="text-[9px] font-black text-amber-600 uppercase tracking-widest">Resumen del Extra</p>
+        <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
+          <div class="bg-white rounded-xl p-2 border border-amber-100">
+            <p class="text-slate-400 font-bold uppercase">Subtotal</p>
+            <p class="font-black text-slate-800 text-sm" id="extra-sub">$0.00</p>
+          </div>
+          <div class="bg-white rounded-xl p-2 border border-amber-100">
+            <p class="text-slate-400 font-bold uppercase">IVA 16%</p>
+            <p class="font-black text-slate-800 text-sm" id="extra-iva">$0.00</p>
+          </div>
+          <div class="bg-amber-100 rounded-xl p-2 border border-amber-200">
+            <p class="text-amber-700 font-black uppercase">Total</p>
+            <p class="font-black text-amber-800 text-sm" id="extra-tot">$0.00</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="p-4 md:p-6 bg-white border-t border-slate-100 flex flex-col md:flex-row gap-3 justify-end shrink-0">
+      <button onclick="closeModal('modal-extra')"
+        class="w-full md:w-auto bg-slate-100 text-slate-500 px-6 py-3 rounded-xl font-black text-xs hover:bg-slate-200 transition uppercase tracking-widest">Cancelar</button>
+      <button onclick="guardarExtra()" id="btn-guardar-extra"
+        class="w-full md:w-auto bg-amber-500 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-amber-200 hover:bg-amber-600 transition text-xs uppercase tracking-widest">➕
+        Guardar Extra</button>
+    </div>
+  </div>
+</div>

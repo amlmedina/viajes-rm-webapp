@@ -1,0 +1,157 @@
+<script>
+    console.log('[LOAD] Scripts_Nav OK');
+
+    // Función centralizada: delega el envío al backend (con retry + logging)
+    async function _sendWA(contactos, msg, evento, idTicket) {
+        const lista = [];
+        for (const c of contactos) {
+            const phone = typeof c === 'string' ? c : c.telefono;
+            const nombre = typeof c === 'string' ? '' : (c.nombre || '');
+            if (phone) lista.push({ telefono: phone, nombre });
+        }
+        if (lista.length === 0) return;
+        // Fire-and-forget: el backend hace retry y logging
+        apiCall('sendWhatsapp', { contactos: lista, mensaje: msg, evento, idTicket }).catch(() => { });
+    }
+
+    async function sendAppNotifications(evento, idTicket, extraMotivo = "") {
+        const ticketRow = localData.dashboard.find(t => t[0] === idTicket);
+        if (!ticketRow) return;
+        const link = `${APP_BASE_URL}?ticket=${idTicket}`;
+        const solicitante = ticketRow[2];
+        const empresa = ticketRow[3];
+
+        // t[10] = empresaId original, t[9] = Evento, t[3] = nombre ya resuelto
+        const empresaId = ticketRow[10] || ticketRow[3];
+        const empresaNombre = ticketRow[3];
+
+        const contactosRes = await apiCall('getContactosNotificacion', { empresaId, evento });
+        if (contactosRes.status !== "success") return;
+
+        // Construir mensajes usando templates dinámicos
+        const vars = { solicitante, idTicket, empresa: empresaNombre, link, motivo: extraMotivo, asignado: String(ticketRow[8] || 'Sin asignar') };
+        const fillTemplate = (tpl) => {
+            if (!tpl) return '';
+            return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '');
+        };
+
+        const tAdmin = fillTemplate(waConfig.templates[evento + '_admin'] || '');
+        const tIndy = fillTemplate(waConfig.templates[evento + '_indy'] || '');
+
+        if (!tAdmin && !tIndy) return;
+
+        if (tAdmin) await _sendWA(contactosRes.data.adminContactos || contactosRes.data.admins, tAdmin, evento, idTicket);
+        if (tIndy) await _sendWA(contactosRes.data.indiprisContactos || contactosRes.data.indipris, tIndy, evento, idTicket);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // NAVEGACIÓN / TABS
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.switchTab = async (tab) => {
+        const tabsSuper = ['usuarios', 'notificaciones', 'reporte', 'walog', 'rpdetalle'];
+        if (tabsSuper.includes(tab) && session.role !== 'super') return;
+
+        const allTabs = ['operativo', 'financiero', 'usuarios', 'notificaciones', 'reporte', 'walog', 'rpdetalle'];
+        allTabs.forEach(t => {
+            const panel = document.getElementById('dashboard-' + t);
+            if (panel) panel.classList.add('hidden');
+        });
+
+        ['operativo', 'financiero'].forEach(t => {
+            const btn = document.getElementById('tab-' + t);
+            if (btn) btn.className = "text-[10px] font-bold tracking-widest text-slate-400 pb-1 hover:text-slate-600 transition whitespace-nowrap";
+        });
+
+        if (tab === 'operativo' || tab === 'financiero') {
+            const active = document.getElementById('tab-' + tab);
+            if (active) active.className = "text-[10px] font-black tracking-widest text-pink-600 border-b-2 border-pink-600 pb-1 transition whitespace-nowrap";
+        }
+
+        // Mostrar el panel seleccionado
+        document.getElementById('dashboard-' + tab).classList.remove('hidden');
+
+        // Sincronizar el select de admin
+        const selMenu = document.getElementById('super-menu-select');
+        if (selMenu) {
+            if (tabsSuper.includes(tab)) {
+                selMenu.value = tab;
+            } else {
+                selMenu.selectedIndex = 0; // reset a "ADMINISTRACIÓN"
+            }
+        }
+
+        if (tab === 'financiero') await renderFinanzasTab();
+        if (tab === 'usuarios') await renderUsuariosTable();
+        if (tab === 'notificaciones') await renderNotificacionesTable();
+        if (tab === 'walog') await loadWaLogs();
+        if (tab === 'rpdetalle') initReporteDetallado();
+    };
+
+    window.showDashboard = () => {
+        document.getElementById('app-view').classList.add('hidden');
+        document.getElementById('dashboard-view').classList.remove('hidden');
+        // Asegurar que el panel operativo esté visible
+        const allPanels = ['operativo', 'financiero', 'usuarios', 'notificaciones', 'reporte', 'walog', 'rpdetalle'];
+        allPanels.forEach(t => {
+            const panel = document.getElementById('dashboard-' + t);
+            if (panel) panel.classList.add('hidden');
+        });
+        document.getElementById('dashboard-operativo').classList.remove('hidden');
+        // Resaltar tab operativo
+        ['operativo', 'financiero'].forEach(t => {
+            const btn = document.getElementById('tab-' + t);
+            if (btn) btn.className = t === 'operativo'
+                ? "text-[10px] font-black tracking-widest text-pink-600 border-b-2 border-pink-600 pb-1 transition whitespace-nowrap"
+                : "text-[10px] font-bold tracking-widest text-slate-400 pb-1 hover:text-slate-600 transition whitespace-nowrap";
+        });
+        const selMenu = document.getElementById('super-menu-select');
+        if (selMenu) selMenu.selectedIndex = 0;
+        renderDashboardTable();
+    };
+
+    window.closeModal = (id) => {
+        document.getElementById(id).classList.add('hidden');
+        const dd = document.getElementById('det-acciones-dropdown');
+        if (dd) dd.classList.add('hidden');
+    };
+
+    window.closeAccDD = () => {
+        const dd = document.getElementById('det-acciones-dropdown');
+        if (dd) dd.classList.add('hidden');
+    };
+
+    // Close acciones dropdown on outside click
+    document.addEventListener('click', (e) => {
+        const menu = document.getElementById('det-acciones-menu');
+        const dd = document.getElementById('det-acciones-dropdown');
+        if (menu && dd && !menu.contains(e.target)) dd.classList.add('hidden');
+    });
+
+    // Change ticket status with double confirmation
+    window.mostrarCambioEstado = async () => {
+        if (!idTicketEnFoco) return;
+        const { value: nuevoEstado } = await Swal.fire({
+            title: 'Cambiar Estado',
+            input: 'select',
+            inputOptions: { Pendiente: 'Pendiente', Cotizado: 'Cotizado', Autorizado: 'Autorizado', Comprado: 'Comprado', Cancelado: 'Cancelado' },
+            inputPlaceholder: 'Selecciona un estado',
+            showCancelButton: true,
+            confirmButtonText: 'Cambiar',
+            cancelButtonText: 'Cancelar'
+        });
+        if (!nuevoEstado) return;
+        const { isConfirmed } = await Swal.fire({ title: '¿Confirmar?', text: 'Estado nuevo: ' + nuevoEstado, icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, cambiar', cancelButtonText: 'No' });
+        if (!isConfirmed) return;
+        showLoading('Cambiando estado...');
+        const res = await apiCall('cambiarEstado', { idTicket: idTicketEnFoco, nuevoEstado });
+        hideLoading();
+        if (res.status === 'success') {
+            await refreshDashboardSilencioso();
+            await openDetalles(idTicketEnFoco);
+        } else Toast.fire({ text: res.message, icon: 'error' });
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DASHBOARD — TABLA PRINCIPAL
+    // ─────────────────────────────────────────────────────────────────────────────
+</script>

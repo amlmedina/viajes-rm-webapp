@@ -1,0 +1,328 @@
+<script>
+    console.log('[LOAD] Scripts_Dashboard OK');
+    function getBadgeColor(estado) {
+        const map = { Pendiente: 'bg-amber-100 text-amber-700', Cotizado: 'bg-blue-100 text-blue-700', Autorizado: 'bg-emerald-100 text-emerald-700', Comprado: 'bg-purple-100 text-purple-700', Cancelado: 'bg-red-100 text-red-700' };
+        return map[estado] || 'bg-slate-100 text-slate-600';
+    }
+
+    function buildMesValue(dateObj) {
+        return isNaN(dateObj) ? "0000-00" : `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const MESES_NOMBRES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    function buildMesLabel(dateObj) {
+        return isNaN(dateObj) ? "Sin Fecha" : `${MESES_NOMBRES[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+    }
+
+    function actualizarDropdownsFiltro() {
+        // ── Meses ──────────────────────────────────────────────────────────────
+        const uniqueMonths = new Map();
+        localData.dashboard.forEach(t => {
+            const d = parseDateObj(t[1]);
+            const v = buildMesValue(d), l = buildMesLabel(d);
+            if (!uniqueMonths.has(v)) uniqueMonths.set(v, l);
+        });
+        let optsM = '<option value="">Todos los Meses</option>';
+        Array.from(uniqueMonths.keys()).sort().reverse().forEach(v => { optsM += `<option value="${v}">${uniqueMonths.get(v)}</option>`; });
+        ['filter-mes'].forEach(id => { document.getElementById(id).innerHTML = optsM; });
+
+        // ── Empresas (solo visible para indipris / super) ──────────────────────
+        // Usamos localData.companies para tener la lista canónica ordenada
+        if (session.role === 'indipris' || session.role === 'super') {
+            // Filtrar solo las empresas que realmente tienen tickets
+            const idsConTickets = new Set(localData.dashboard.map(t => t[10]).filter(Boolean));
+            const empresasConTickets = localData.companies
+                .filter(c => idsConTickets.has(c.id))
+                .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+            let optsE = '<option value="">Todas las Empresas</option>';
+            empresasConTickets.forEach(c => { optsE += `<option value="${c.id}">${c.nombre}</option>`; });
+
+            ['filter-empresa'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.innerHTML = optsE;
+                el.classList.remove('hidden');
+            });
+        }
+
+        // ── Ejecutivos (visible para super e indipris) ────────────────────────
+        if (session.role === 'super' || session.role === 'indipris') {
+            const ejecutivosConTickets = [...new Set(
+                localData.dashboard.map(t => String(t[8] || '').trim()).filter(Boolean)
+            )].sort();
+            let optsEj = '<option value="">Todos los Ejecutivos</option>';
+            ejecutivosConTickets.forEach(e => { optsEj += `<option value="${e}">${e}</option>`; });
+            const selEj = document.getElementById('filter-ejecutivo');
+            if (selEj) selEj.innerHTML = optsEj;
+        }
+
+        // ── Eventos ────────────────────────────────────────────────────────────
+        const eventosUnicos = [...new Set(
+            localData.dashboard.map(t => String(t[9] || '').trim()).filter(Boolean)
+        )].sort();
+        const selEvento = document.getElementById('filter-evento');
+        if (selEvento) {
+            let optsEv = '<option value="">Todos los Eventos</option>';
+            eventosUnicos.forEach(ev => { optsEv += `<option value="${ev}">${ev}</option>`; });
+            selEvento.innerHTML = optsEv;
+            if (eventosUnicos.length > 0) selEvento.classList.remove('hidden');
+        }
+
+        // ── Orígenes y Destinos ────────────────────────────────────────────────
+        const allOrigenes = new Set();
+        const allDestinos = new Set();
+        localData.serviciosResumen.forEach(s => {
+            const o = String(s[2] || '').trim().toUpperCase();
+            const d = String(s[3] || '').trim().toUpperCase();
+            if (o) allOrigenes.add(o);
+            if (d) allDestinos.add(d);
+        });
+
+        const selOrigen = document.getElementById('filter-origen');
+        if (selOrigen) {
+            let optsOr = '<option value="">Todos Orígenes</option>';
+            [...allOrigenes].sort().forEach(o => { optsOr += `<option value="${o}">${o}</option>`; });
+            selOrigen.innerHTML = optsOr;
+        }
+
+        const selDestino = document.getElementById('filter-destino');
+        if (selDestino) {
+            let optsDst = '<option value="">Todos Destinos</option>';
+            [...allDestinos].sort().forEach(d => { optsDst += `<option value="${d}">${d}</option>`; });
+            selDestino.innerHTML = optsDst;
+        }
+    }
+
+    function renderRowTemplate(t, extraClasses = "") {
+        const [id, date, solicitante, empresa, estado] = t;
+        const asignadoA = String(t[8] || '').trim();
+        const dateObj = parseDateObj(date);
+        const svcs = localData.serviciosResumen.filter(s => s[0] === id);
+
+        // Construir resumen compacto: tipo origen→destino (fecha)
+        const resumen = svcs.map(s => {
+            const fechaSvc = s[4] ? parseDateObj(s[4]) : null;
+            const fechaStr = fechaSvc && !isNaN(fechaSvc) ? fechaSvc.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '';
+            return `<span class="text-xs"><span class="font-bold text-slate-700">${s[1]}</span> <span class="text-slate-500">${s[2]}→${s[3]}</span>${fechaStr ? ` <span class="text-slate-400">(${fechaStr})</span>` : ''}</span>`;
+        }).join(' <span class="text-slate-300">·</span> ');
+
+        // Pasajeros inline como badges compactos
+        const paxList = (localData.pasajerosResumen || {})[id] || [];
+        const paxCount = paxList.length;
+        const paxInline = paxCount > 0
+            ? `<span class="text-[10px] text-slate-400 font-bold ml-1">(${paxCount} pax: ${paxList.join(', ')})</span>`
+            : '';
+
+        // Orígenes y destinos para filtrado
+        const origenes = [...new Set(svcs.map(s => String(s[2] || '').trim().toUpperCase()))].join(',');
+        const destinos = [...new Set(svcs.map(s => String(s[3] || '').trim().toUpperCase()))].join(',');
+
+        const color = getBadgeColor(estado);
+        const asignadoBadge = (session.role === 'indipris' || session.role === 'super') && asignadoA
+            ? `<span class="ml-1 text-[9px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">${asignadoA}</span>`
+            : '';
+
+        const eventoTicket = String(t[9] || '').trim();
+        return `
+  <tr onclick="openDetalles('${id}')" class="border-b border-slate-50 hover:bg-slate-50 transition tr-ticket cursor-pointer ${extraClasses} block md:table-row mb-3 md:mb-0 bg-white md:bg-transparent rounded-xl md:rounded-none shadow-sm md:shadow-none p-3 md:p-0" data-estado="${estado}" data-empresa="${t[10] || empresa}" data-asignado="${asignadoA}" data-evento="${eventoTicket}" data-origen="${origenes}" data-destino="${destinos}">
+    <td class="px-2 md:px-4 py-1 md:py-3 font-mono text-[10px] md:text-xs text-slate-400 font-bold align-middle block md:table-cell">
+      <div class="flex justify-between md:block items-center">
+        <span>${id} · ${dateObj.toLocaleDateString('es-MX')}</span>
+        <span class="status-badge ${color} md:hidden text-[8px]">${estado}</span>
+      </div>
+    </td>
+    <td class="px-2 md:px-4 py-1 md:py-3 align-middle block md:table-cell">
+      <span class="font-black text-sm text-slate-800">${empresa}${asignadoBadge}</span>
+      <span class="text-xs text-slate-400 font-bold ml-2">${solicitante}</span>
+    </td>
+    <td class="px-2 md:px-4 py-1 md:py-3 align-middle text-[10px] text-slate-500 font-bold block md:table-cell">${paxList.length > 0 ? paxList.join(', ') : ''}</td>
+    <td class="px-2 md:px-4 py-1 md:py-3 align-middle leading-snug block md:table-cell text-[11px] md:text-sm">${resumen || ''}</td>
+    <td class="px-2 md:px-4 py-1 md:py-3 w-24 align-middle hidden md:table-cell"><span class="status-badge ${color} block text-center">${estado}</span></td>
+    <td class="px-2 md:px-4 py-1 md:py-3 text-center w-20 align-middle hidden md:table-cell">
+      <button class="bg-slate-900 text-white px-3 py-1.5 rounded-xl text-[9px] font-black shadow hover:bg-indipris-main transition uppercase tracking-widest whitespace-nowrap">Ver</button>
+    </td>
+  </tr>`;
+    }
+
+    function renderDashboardTable() {
+        let html = '';
+        let tickets = [...localData.dashboard];
+
+        tickets.sort((a, b) => parseDateObj(b[1]) - parseDateObj(a[1]));
+
+        // ── Actualizar stats ──────────────────────────────────────────────────────
+        if (session.role === 'admin' || session.role === 'indipris' || session.role === 'super') {
+            document.getElementById('stat-pendientes').innerText = tickets.filter(t => t[4] === 'Pendiente').length;
+            document.getElementById('stat-comprados').innerText = tickets.filter(t => t[4] === 'Comprado').length;
+        }
+
+        // ── Lógica especial para indipris: dividir en Mis Asignaciones / Equipo ───
+        if (session.role === 'indipris') {
+            const miUsername = session.name;
+            const misTickets = tickets.filter(t => String(t[8] || '').toLowerCase() === miUsername.toLowerCase());
+            const equipoTkts = tickets.filter(t => String(t[8] || '').toLowerCase() !== miUsername.toLowerCase());
+
+            // Mis asignaciones — solo los que necesitan acción
+            const misUrgentes = misTickets.filter(t => t[4] === 'Pendiente' || t[4] === 'Autorizado');
+            const misResto = misTickets.filter(t => t[4] !== 'Pendiente' && t[4] !== 'Autorizado');
+
+            if (misUrgentes.length > 0) {
+                html += `<tr class="bg-red-50 border-b border-red-100"><td colspan="6" class="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest"><div class="flex items-center gap-2"><span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>Urgente - Mis Asignaciones</div></td></tr>`;
+                misUrgentes.forEach(t => { html += renderRowTemplate(t, "urgent-pulse tr-atencion"); });
+            }
+
+            if (misResto.length > 0) {
+                html += `<tr class="bg-indigo-50/60 border-b border-indigo-100"><td colspan="6" class="px-6 py-4 text-[10px] font-black text-indigo-700 uppercase tracking-widest"> Mis Asignaciones - Historial</td></tr>`;
+                misResto.forEach(t => { html += renderRowTemplate(t, "tr-mis"); });
+            }
+
+            if (misTickets.length === 0) {
+                html += `<tr class="bg-indigo-50/40 border-b border-indigo-100"><td colspan="6" class="px-6 py-8 text-center text-indigo-400 font-bold italic text-xs">Sin asignaciones activas para ti.</td></tr>`;
+            }
+
+            // Pendientes de equipo — agrupados por mes
+            if (equipoTkts.length > 0) {
+                html += `<tr class="bg-slate-100 border-b border-slate-200"><td colspan="6" class="px-6 py-4 text-[10px] font-black text-slate-600 uppercase tracking-widest"> Pendientes del Equipo</td></tr>`;
+                const grupoEquipo = {};
+                const mesesEquipo = new Map();
+                equipoTkts.forEach(t => {
+                    const d = parseDateObj(t[1]), v = buildMesValue(d), l = buildMesLabel(d);
+                    if (!mesesEquipo.has(v)) mesesEquipo.set(v, l);
+                    if (!grupoEquipo[v]) grupoEquipo[v] = [];
+                    grupoEquipo[v].push(t);
+                });
+                Object.keys(grupoEquipo).sort().reverse().forEach(v => {
+                    const l = mesesEquipo.get(v), tkts = grupoEquipo[v];
+                    html += `<tr class="bg-pink-50/40 border-b border-pink-100 cursor-pointer hover:bg-pink-50 transition month-header" data-mes="eq-${v}" onclick="toggleMonth('eq-${v}')"><td colspan="6" class="px-6 py-4 text-[10px] font-black text-pink-700 uppercase tracking-[0.1em]"><div class="flex items-center"><span class="mr-2 text-sm transition-transform duration-200" id="icon-eq-${v}">v</span> ${l} <span class="bg-white border border-pink-100 px-3 py-1 rounded-full text-pink-500 shadow-sm ml-4 font-bold tracking-widest">${tkts.length} SOLICITUD(ES)</span></div></td></tr>`;
+                    tkts.forEach(t => { html += renderRowTemplate(t, `item-mes-eq-${v} tr-equipo`).replace(`data-estado="${t[4]}"`, `data-estado="${t[4]}" data-mes="eq-${v}"`); });
+                });
+            }
+
+            document.getElementById('dash-body').innerHTML = html;
+            filterDashboard();
+            return;
+        }
+
+        // ── Lógica normal para admin, super, viajero ──────────────────────────────
+        const necesitaAtencion = t =>
+            (session.role === 'admin' && t[4] === 'Cotizado') ||
+            (session.role === 'super' && (t[4] === 'Pendiente' || t[4] === 'Autorizado'));
+
+        const atencion = tickets.filter(t => necesitaAtencion(t));
+        const resto = tickets.filter(t => !necesitaAtencion(t));
+
+        if (atencion.length > 0) {
+            html += `<tr class="bg-red-50 border-b border-red-100"><td colspan="6" class="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest"><div class="flex items-center gap-2"><span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>Requiere tu Atencion Inmediata</div></td></tr>`;
+            atencion.forEach(t => { html += renderRowTemplate(t, "urgent-pulse tr-atencion"); });
+        }
+
+        const grouped = {};
+        const uniqueMonths = new Map();
+        resto.forEach(t => {
+            const d = parseDateObj(t[1]), v = buildMesValue(d), l = buildMesLabel(d);
+            if (!uniqueMonths.has(v)) uniqueMonths.set(v, l);
+            if (!grouped[v]) grouped[v] = [];
+            grouped[v].push(t);
+        });
+
+        if (Object.keys(grouped).length === 0 && atencion.length === 0) {
+            html = '<tr><td colspan="6" class="p-16 text-center text-slate-300 font-black italic">Bandeja vacía.</td></tr>';
+        } else {
+            Object.keys(grouped).sort().reverse().forEach(v => {
+                const l = uniqueMonths.get(v), tkts = grouped[v];
+                html += `<tr class="bg-pink-50/40 border-b border-pink-100 cursor-pointer hover:bg-pink-50 transition month-header" data-mes="${v}" onclick="toggleMonth('${v}')"><td colspan="6" class="px-6 py-4 text-[10px] font-black text-pink-700 uppercase tracking-[0.1em]"><div class="flex items-center"><span class="mr-2 text-sm transition-transform duration-200" id="icon-${v}">v</span> ${l} <span class="bg-white border border-pink-100 px-3 py-1 rounded-full text-pink-500 shadow-sm ml-4 font-bold tracking-widest">${tkts.length} SOLICITUD(ES)</span></div></td></tr>`;
+                tkts.forEach(t => { html += renderRowTemplate(t, `item-mes-${v}`).replace(`data-estado="${t[4]}"`, `data-estado="${t[4]}" data-mes="${v}"`); });
+            });
+        }
+
+        document.getElementById('dash-body').innerHTML = html;
+        filterDashboard();
+    }
+
+    window.descargarCSV = () => {
+        if (session.role !== 'super') return;
+
+        // Leer filtros activos para exportar solo lo que está visible
+        const ejecutivoFilter = document.getElementById('filter-ejecutivo')?.value || '';
+        const empresaFilter = document.getElementById('filter-empresa')?.value || '';
+        const estadoFilter = document.getElementById('filter-estado').value;
+        const mesFilter = document.getElementById('filter-mes').value;
+        const q = document.getElementById('search-dash').value.toLowerCase();
+
+        // Filtrar tickets en memoria con las mismas reglas que filterDashboard
+        let tickets = [...localData.dashboard];
+
+        if (empresaFilter) tickets = tickets.filter(t => (t[10] || '') === empresaFilter);
+        if (ejecutivoFilter) tickets = tickets.filter(t => String(t[8] || '').trim() === ejecutivoFilter);
+        if (estadoFilter) tickets = tickets.filter(t => t[4] === estadoFilter);
+        if (mesFilter) {
+            tickets = tickets.filter(t => {
+                const d = parseDateObj(t[1]);
+                return buildMesValue(d) === mesFilter;
+            });
+        }
+        if (q) {
+            tickets = tickets.filter(t => {
+                const svcs = (localData.serviciosResumen || []).filter(s => s[0] === t[0]);
+                const paxs = (localData.pasajerosResumen || {})[t[0]] || [];
+                const texto = [t[0], t[2], t[3], t[4], t[9],
+                svcs.map(s => s[2] + ' ' + s[3]).join(' '),
+                paxs.join(' ')
+                ].join(' ').toLowerCase();
+                return texto.includes(q);
+            });
+        }
+
+        // Construir CSV
+        const escaparCSV = (v) => {
+            const s = String(v === null || v === undefined ? '' : v);
+            return s.includes(',') || s.includes('"') || s.includes('\n')
+                ? '"' + s.replace(/"/g, '""') + '"'
+                : s;
+        };
+
+        const encabezado = ['ID Ticket', 'Fecha', 'Solicitante', 'Empresa', 'Estado', 'Ejecutivo Asignado', 'Evento', 'Tipo Servicio', 'Origen', 'Destino', 'Pasajeros'];
+
+        const filas = tickets.map(t => {
+            const svcs = (localData.serviciosResumen || []).filter(s => s[0] === t[0]);
+            const tipoTexto = svcs.map(s => s[1]).join(' | ');
+            const origenTexto = svcs.map(s => s[2]).join(' | ');
+            const destinoTexto = svcs.map(s => s[3]).join(' | ');
+            const paxTexto = ((localData.pasajerosResumen || {})[t[0]] || []).join(' | ');
+            const fecha = parseDateObj(t[1]);
+            const fechaStr = isNaN(fecha) ? String(t[1]) : fecha.toLocaleDateString('es-MX');
+            return [
+                t[0],            // ID
+                fechaStr,        // Fecha
+                t[2],            // Solicitante
+                t[3],            // Empresa
+                t[4],            // Estado
+                t[8] || '',      // Ejecutivo
+                t[9] || '',      // Evento
+                tipoTexto,       // Tipo Servicio
+                origenTexto,     // Origen
+                destinoTexto,    // Destino
+                paxTexto         // Pasajeros
+            ].map(escaparCSV).join(',');
+        });
+
+        const csv = [encabezado.join(','), ...filas].join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+
+        // Nombre del archivo con filtros aplicados
+        const partesFiltro = [];
+        if (ejecutivoFilter) partesFiltro.push(ejecutivoFilter);
+        if (estadoFilter) partesFiltro.push(estadoFilter);
+        if (mesFilter) partesFiltro.push(mesFilter);
+        const sufijo = partesFiltro.length > 0 ? '_' + partesFiltro.join('_') : '';
+        a.href = url;
+        a.download = `indipris_tickets${sufijo}_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        const msgCSV = 'CSV descargado (' + tickets.length + ' tickets)';
+        Toast.fire({ text: msgCSV, icon: 'success', timer: 2000, showConfirmButton: false, toast: true, position: 'bottom-end' });
+    };
+</script>

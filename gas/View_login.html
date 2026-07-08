@@ -1,0 +1,191 @@
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay"
+  class="fixed inset-0 bg-white/95 z-[100] flex flex-col items-center justify-center transition-opacity duration-300">
+  <div class="relative w-24 h-24 mb-6">
+    <div class="absolute inset-0 border-4 border-pink-100 rounded-full"></div>
+    <div class="absolute inset-0 border-4 border-indipris-main rounded-full border-t-transparent animate-spin"></div>
+  </div>
+  <p class="font-black text-slate-400 uppercase tracking-[0.2em] text-xs" id="loading-text">Conectando...</p>
+</div>
+
+<datalist id="lista-nombres"></datalist>
+<datalist id="lista-eventos"></datalist>
+<datalist id="lista-ciudades">
+  <!-- México -->
+  <option value="Ciudad de México (CDMX)">
+  <option value="Guadalajara">
+  <option value="Monterrey">
+  <option value="Cancún">
+  <option value="Tijuana">
+  <option value="León">
+  <option value="Puebla">
+  <option value="Mérida">
+  <option value="San Luis Potosí">
+  <option value="Querétaro">
+  <option value="Chihuahua">
+  <option value="Hermosillo">
+  <option value="Acapulco">
+  <option value="Veracruz">
+  <option value="Culiacán">
+  <option value="Aguascalientes">
+  <option value="Tampico">
+  <option value="Oaxaca">
+  <option value="Mazatlán">
+  <option value="Puerto Vallarta">
+  <option value="Los Cabos">
+  <option value="La Paz">
+  <option value="Durango">
+  <option value="Zacatecas">
+  <option value="Morelia">
+  <option value="Toluca">
+  <option value="Colima">
+  <option value="Tepic">
+  <option value="Villahermosa">
+  <option value="Tuxtla Gutiérrez">
+  <option value="Chetumal">
+  <option value="Campeche">
+  <option value="Manzanillo">
+  <option value="Ixtapa / Zihuatanejo">
+  <option value="Huatulco">
+  <option value="Loreto">
+  <option value="Saltillo">
+  <option value="Torreón">
+  <option value="Ciudad Juárez">
+  <option value="Matamoros">
+  <option value="Nuevo Laredo">
+  <option value="Reynosa">
+  <option value="Ciudad Obregón">
+  <option value="Los Mochis">
+  <option value="Guaymas">
+  <option value="Tepic">
+  <option value="Bahías de Huatulco">
+  <option value="Palenque">
+  <option value="San Cristóbal de las Casas">
+  <option value="Cozumel">
+  <option value="Playa del Carmen">
+  <option value="Holbox">
+  <option value="Tulum">
+    <!-- Estados Unidos -->
+  <option value="Nueva York (JFK)">
+  <option value="Nueva York (EWR)">
+  <option value="Los Ángeles">
+  <option value="Chicago">
+  <option value="Houston">
+  <option value="Dallas">
+  <option value="Miami">
+  <option value="Las Vegas">
+  <option value="Orlando">
+  <option value="San Francisco">
+  <option value="Seattle">
+  <option value="Boston">
+  <option value="Washington D.C.">
+  <option value="Atlanta">
+  <option value="Denver">
+  <option value="Phoenix">
+  <option value="San Diego">
+  <option value="Minneapolis">
+  <option value="Detroit">
+  <option value="Newark">
+  <option value="Philadelphia">
+  <option value="Charlotte">
+  <option value="Tampa">
+  <option value="Fort Lauderdale">
+  <option value="Salt Lake City">
+  <option value="Portland">
+  <option value="Austin">
+  <option value="San Antonio">
+  <option value="Nashville">
+  <option value="Honolulu">
+  <option value="Anchorage">
+</datalist>
+
+<!-- LOGIN -->
+<div id="login-view" class="min-h-screen flex items-center justify-center p-4 relative hidden">
+  <div class="absolute top-0 left-0 w-full h-3 bg-indipris-main"></div>
+  <div class="max-w-md w-full bg-white rounded-[2rem] card-shadow p-10 space-y-8 fade-in relative">
+    <div class="text-center">
+      <img
+        src="https://media.licdn.com/dms/image/v2/D4E0BAQGi5xB-88mWyg/company-logo_200_200/B4EZXs45i2HMAI-/0/1743436094484/indipris_travel_logo?e=2147483647&v=beta&t=qjIrXCyI31f9YqjKpcmrJZJtbDNKyblQ_1tpTXUOwLI"
+        class="h-28 w-28 mx-auto rounded-full shadow-lg border-4 border-pink-50 object-cover" alt="Logo">
+      <h1 class="text-3xl font-black mt-6 tracking-tight text-slate-800">Indipris ERP</h1>
+      <p class="text-slate-400 text-sm font-bold mt-1">Gestión Corporativa de Viajes</p>
+    </div>
+
+    <!-- Formulario Login -->
+    <div id="form-login" class="space-y-5">
+      <input type="text" id="login-user" placeholder="Usuario o correo"
+        class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold text-slate-700">
+      <input type="password" id="login-pass" placeholder="Contraseña" onkeypress="if(event.key==='Enter')checkLogin()"
+        class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold text-slate-700">
+      <p id="login-error" class="text-red-500 text-xs hidden font-bold text-center">Credenciales incorrectas.</p>
+      <button id="btn-login-submit" onclick="checkLogin()"
+        class="w-full bg-indipris-main text-white py-4 rounded-2xl font-black shadow-lg shadow-pink-200 active:scale-95 transition uppercase tracking-widest text-sm">Entrar
+        al Sistema</button>
+      <div class="text-center pt-2">
+        <button onclick="toggleOTPView(true)"
+          class="text-xs font-bold text-slate-400 hover:text-pink-600 transition">¿Olvidaste tu contraseña?</button>
+      </div>
+    </div>
+
+    <!-- Formulario OTP — CORREGIDO: flujo separado en 3 pasos controlados server-side -->
+    <div id="form-otp" class="space-y-5 hidden fade-in">
+      <!-- PASO 1: Solicitar OTP -->
+      <div id="otp-step-1">
+        <p class="text-xs font-bold text-slate-500 text-center mb-4">Valida tu identidad para restablecer el acceso.</p>
+        <input type="text" id="otp-user" placeholder="Tu Usuario o Correo"
+          class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold mb-3">
+        <input type="number" id="otp-phone" placeholder="Tu número a 10 dígitos"
+          class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold">
+        <button id="btn-send-otp" onclick="requestOTP()"
+          class="w-full mt-4 bg-indipris-main text-white py-4 rounded-2xl font-black active:scale-95 transition text-sm">Enviar
+          Código por WhatsApp</button>
+      </div>
+      <!-- PASO 2: Verificar código -->
+      <div id="otp-step-2" class="hidden space-y-4">
+        <p class="text-xs font-bold text-green-600 text-center">✓ Código enviado por WhatsApp al número registrado.</p>
+        <input type="number" id="otp-code" placeholder="6 dígitos"
+          class="w-full rounded-2xl border-2 border-indipris-main p-4 text-center font-black tracking-[0.5em] text-lg">
+        <button onclick="verifyOTP()"
+          class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black active:scale-95 transition text-sm">Verificar
+          Código</button>
+      </div>
+      <!-- PASO 3: Nueva contraseña -->
+      <div id="otp-step-3" class="hidden space-y-4 fade-in">
+        <p class="text-xs font-bold text-indipris-main text-center uppercase tracking-widest">Código Válido ✓</p>
+        <input type="password" id="otp-new-pass" placeholder="Nueva Contraseña"
+          class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold text-slate-700">
+        <input type="password" id="otp-confirm-pass" placeholder="Confirmar Contraseña"
+          class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold text-slate-700">
+        <button onclick="saveResetPassword()" id="btn-save-reset"
+          class="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 active:scale-95 transition text-sm">GUARDAR
+          CONTRASEÑA</button>
+      </div>
+      <div class="text-center pt-2">
+        <button onclick="toggleOTPView(false)" class="text-xs font-bold text-slate-400 hover:text-pink-600 transition">←
+          Volver al Login</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FORZAR RESET DE CONTRASEÑA -->
+<div id="force-reset-view" class="min-h-screen flex items-center justify-center p-4 relative hidden">
+  <div class="absolute top-0 left-0 w-full h-3 bg-amber-400"></div>
+  <div
+    class="max-w-md w-full bg-white rounded-[2rem] card-shadow p-10 space-y-8 fade-in relative border-t-8 border-amber-400">
+    <div class="text-center">
+      <h1 class="text-2xl font-black tracking-tight text-slate-800">Actualización Requerida</h1>
+      <p class="text-slate-500 text-sm font-bold mt-2">Has iniciado sesión con una contraseña genérica. Por tu
+        seguridad, establece una contraseña privada antes de continuar.</p>
+    </div>
+    <div class="space-y-5">
+      <input type="password" id="force-new-pass" placeholder="Nueva Contraseña"
+        class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold text-slate-700">
+      <input type="password" id="force-confirm-pass" placeholder="Confirmar Contraseña"
+        class="w-full rounded-2xl border-2 border-slate-100 p-4 bg-slate-50 font-bold text-slate-700">
+      <button onclick="saveForcePassword()" id="btn-force-save"
+        class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition tracking-widest text-sm">GUARDAR
+        Y ENTRAR</button>
+    </div>
+  </div>
+</div>

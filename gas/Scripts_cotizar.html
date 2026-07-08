@@ -1,0 +1,804 @@
+<script>
+    console.log('[LOAD] Scripts_Cotizar OK');
+    window.rechazarOpcionIndividual = async (optionIds) => {
+        const ids = optionIds.split(',').filter(Boolean);
+        const { isConfirmed } = await Swal.fire({ title: 'Rechazar esta opción', text: '¿Estás seguro?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Rechazar', cancelButtonText: 'Cancelar' });
+        if (!isConfirmed) return;
+        showLoading("Rechazando...");
+        const res = await apiCall('rejectSpecificOptions', { idTicket: idTicketEnFoco, optionIds: ids });
+        if (res.status === "success") {
+            await refreshDashboardSilencioso();
+            await openDetalles(idTicketEnFoco);
+            Toast.fire({ text: 'Opción rechazada', icon: 'success', timer: 2000, showConfirmButton: false });
+        } else Toast.fire({ text: res.message, icon: 'error' });
+        hideLoading();
+    };
+
+    // Eliminar un extra
+    window.eliminarExtra = async (idOpcion) => {
+        const { isConfirmed } = await Swal.fire({ title: 'Eliminar Extra', text: '¿Eliminar este cargo extra?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar' });
+        if (!isConfirmed) return;
+        showLoading("Eliminando...");
+        const res = await apiCall('deleteExtra', { idTicket: idTicketEnFoco, idOpcion });
+        hideLoading();
+        if (res.status === "success") {
+            await refreshDashboardSilencioso();
+            await openDetalles(idTicketEnFoco);
+        } else Toast.fire({ text: res.message, icon: 'error' });
+    };
+
+    // rechazarTramoEspecifico: rechaza solo las opciones de un servicio específico
+    window.rechazarTramoEspecifico = async (nombreTramo) => {
+        const { value: motivo } = await Toast.fire({ title: 'Rechazar Trayecto', text: `Motivo para:\n${nombreTramo}`, input: 'text', showCancelButton: true, confirmButtonText: 'Rechazar', cancelButtonText: 'Cancelar' });
+        if (!motivo?.trim()) return;
+        const motivoFinal = `[Rechazo: ${nombreTramo}] Motivo: ${motivo}`;
+        closeModal('modal-detalles'); showLoading("Rechazando...");
+        const res = await apiCall('rejectOptions', { idTicket: idTicketEnFoco, motivo: motivoFinal });
+        if (res.status === "success") { sendAppNotifications("RECHAZADO", idTicketEnFoco, motivoFinal).catch(() => { }); await refreshDashboardSilencioso(); }
+        else Toast.fire({ text: res.message, icon: "error" });
+        hideLoading();
+    };
+
+    // rechazarTodas: rechaza TODAS las propuestas (corregía la función faltante)
+    window.rechazarTodas = async () => {
+        const { value: motivo } = await Toast.fire({ title: 'Rechazar Todas las Opciones', text: 'Indica brevemente el motivo para rechazar todas las propuestas:', input: 'text', showCancelButton: true, confirmButtonText: 'Rechazar Todo', cancelButtonText: 'Cancelar' });
+        if (!motivo?.trim()) return;
+        const motivoFinal = `[Rechazo Total] ${motivo}`;
+        closeModal('modal-detalles'); showLoading("Rechazando...");
+        const res = await apiCall('rejectOptions', { idTicket: idTicketEnFoco, motivo: motivoFinal });
+        if (res.status === "success") { sendAppNotifications("RECHAZADO", idTicketEnFoco, motivoFinal).catch(() => { }); await refreshDashboardSilencioso(); }
+        else Toast.fire({ text: res.message, icon: "error" });
+        hideLoading();
+    };
+
+    window.ajustarPrecio = async () => {
+        const opts = localData.ticketEnFoco.opciones.filter(o => o[6] === 'Autorizada');
+        if (opts.length === 0) return Toast.fire({ text: "No hay opciones autorizadas para ajustar.", icon: "info" });
+        const ajustes = [];
+        for (const op of opts) {
+            const { value: nuevoCosto } = await Toast.fire({ title: 'Ajustar Costo Base', html: `<p class="text-xs">Actual: <span class="font-black">${formatCurrency(op[3])}</span></p>`, input: 'number', inputValue: op[3], showCancelButton: true, confirmButtonText: 'Siguiente' });
+            if (nuevoCosto === undefined || nuevoCosto === null) return;
+            const { value: nuevoFee } = await Toast.fire({ title: 'Ajustar Fee', html: `<p class="text-xs">Actual: <span class="font-black">${formatCurrency(op[4])}</span></p>`, input: 'number', inputValue: op[4], showCancelButton: true, confirmButtonText: 'Guardar' });
+            if (nuevoFee === undefined || nuevoFee === null) return;
+            ajustes.push({ idOpcion: op[1], nuevoCosto: Number(nuevoCosto), nuevoFee: Number(nuevoFee), nuevoTotal: (Number(nuevoCosto) + Number(nuevoFee)) * 1.16 });
+        }
+        const { isConfirmed } = await Toast.fire({ title: '¿Aplicar ajustes?', text: "El ticket regresará a COTIZADO.", icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, aplicar' });
+        if (!isConfirmed) return;
+        closeModal('modal-detalles'); showLoading("Ajustando...");
+        const res = await apiCall('ajustarPrecio', { idTicket: idTicketEnFoco, ajustes });
+        if (res.status === "success") { sendAppNotifications("COTIZADO", idTicketEnFoco).catch(() => { }); await refreshDashboardSilencioso(); }
+        else Toast.fire({ text: res.message, icon: "error" });
+        hideLoading();
+    };
+
+    window.markPurchased = async () => {
+        // Reset comprobante variables and UI
+        window._comprobanteUrl = null;
+        const uploadLabel = document.getElementById('comprobante-upload-label');
+        if (uploadLabel) {
+            uploadLabel.innerHTML = `<span id="comprobante-upload-text" class="text-[10px] font-black text-indigo-600">📎 Subir captura o comprobante de compra</span><input type="file" id="comprobante-file-input" class="hidden" accept="image/*" onchange="uploadComprobanteCompra(this)">`;
+        }
+
+        const optsAutorizadas = (localData.ticketEnFoco?.opciones || []).filter(o => o[6] === 'Autorizada');
+        const vuelosAutorizados = optsAutorizadas.filter(o => {
+            const svc = (localData.ticketEnFoco?.servicios || []).find(s => s[7] === o[7]);
+            return svc && svc[1] === 'VUELO';
+        });
+
+        if (vuelosAutorizados.length === 0) {
+            const { isConfirmed } = await Toast.fire({
+                title: '¿Marcar como Comprado?',
+                text: "Confirmas que los servicios fueron emitidos/pagados.",
+                icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, confirmar'
+            });
+            if (!isConfirmed) return;
+            await ejecutarCompra();
+            return;
+        }
+
+        // ── Helpers para parsear el HTML del desc ──────────────────────────────────
+        // Formato guardado:
+        // <p><b>Ruta:</b> MEX ➔ CUN</p>
+        // <p><b>Fecha:</b> 2025-01-10 | <b>Horario:</b> 08:00 - 10:30</p>
+        // <p><b>Vuelo:</b> AM500 | <b>PNR:</b> <span class="font-mono ...">X7B9M2</span></p>
+        const parseCampo = (desc, etiqueta) => {
+            const m = desc.match(new RegExp('<b>' + etiqueta + ':<\\/b>\\s*([^<|]+)', 'i'));
+            return m ? m[1].trim() : '';
+        };
+        const parsePNR = (desc) => {
+            const m = desc.match(/<span[^>]*font-mono[^>]*>([^<]*)<\/span>/i);
+            return m ? m[1].trim() : '';
+        };
+
+        // Poblar el modal
+        const container = document.getElementById('pnr-fields-container');
+        container.innerHTML = vuelosAutorizados.map((o, idx) => {
+            const desc = String(o[2] || '');
+            const ruta = parseCampo(desc, 'Ruta');
+            const fecha = parseCampo(desc, 'Fecha');
+            const horario = parseCampo(desc, 'Horario');
+            const vueloActual = parseCampo(desc, 'Vuelo').replace(/\|.*/, '').trim();
+            const pnrActual = parsePNR(desc);
+            const isPendiente = !pnrActual || pnrActual.toUpperCase() === 'PENDIENTE';
+
+            return `<div class="bg-white rounded-2xl border ${isPendiente ? 'border-amber-300' : 'border-slate-200'} p-5 shadow-sm">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-lg"></span>
+        <div>
+          <p class="font-black text-slate-800 text-sm">${ruta || 'Vuelo ' + (idx + 1)}</p>
+          <p class="text-[10px] text-slate-400 font-bold">${fecha} · ${horario}</p>
+        </div>
+        ${isPendiente ? '<span class="ml-auto text-[8px] font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-full uppercase">PNR pendiente</span>' : ''}
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Numero de Vuelo</label>
+          <input type="text" id="pnr-vuelo-${idx}"
+            value="${vueloActual === 'Pendiente' ? '' : vueloActual}"
+            placeholder="Ej. AM500"
+            class="w-full border-b-2 border-slate-200 py-2 font-black text-slate-700 outline-none focus:border-indigo-500 uppercase text-sm bg-transparent">
+        </div>
+        <div>
+          <label class="text-[9px] font-black text-indigo-600 uppercase tracking-widest block mb-1"> Clave de Reserva (PNR)</label>
+          <input type="text" id="pnr-code-${idx}"
+            value="${isPendiente ? '' : pnrActual}"
+            placeholder="Ej. X7B9M2"
+            class="w-full border-b-2 border-2 border-indigo-300 py-2 font-black text-indigo-700 outline-none focus:border-indigo-500 uppercase text-sm bg-indigo-50/30 rounded-lg px-2">
+        </div>
+      </div>
+      <input type="hidden" id="pnr-optid-${idx}"    value="${o[1]}">
+      <input type="hidden" id="pnr-origdesc-${idx}" value="${encodeURIComponent(desc)}">
+    </div>`;
+        }).join('');
+
+        window._vuelosParaConfirmar = vuelosAutorizados;
+        document.getElementById('modal-pnr').classList.remove('hidden');
+    };
+
+    window.confirmarCompraConPNR = async () => {
+        const vuelos = window._vuelosParaConfirmar || [];
+        const ajustes = [];
+
+        vuelos.forEach((o, idx) => {
+            const nuevoVuelo = (document.getElementById(`pnr-vuelo-${idx}`)?.value || '').toUpperCase().trim() || 'Pendiente';
+            const nuevoPNR = (document.getElementById(`pnr-code-${idx}`)?.value || '').toUpperCase().trim() || 'Pendiente';
+            const origDesc = decodeURIComponent(document.getElementById(`pnr-origdesc-${idx}`)?.value || '');
+
+            // Reemplazar número de vuelo: entre <b>Vuelo:</b> y el primer | o <
+            let nuevaDesc = origDesc.replace(
+                /(<b>Vuelo:<\/b>\s*)([^|<]+)/i,
+                (_, pre, _old) => pre + nuevoVuelo + ' '
+            );
+            // Reemplazar PNR: contenido del span font-mono
+            nuevaDesc = nuevaDesc.replace(
+                /(<span[^>]*font-mono[^>]*>)([^<]*)(<\/span>)/i,
+                (_, open, _old, close) => open + nuevoPNR + close
+            );
+
+            if (nuevaDesc !== origDesc) ajustes.push({ idOpcion: o[1], nuevaDesc });
+        });
+
+        const btn = document.getElementById('btn-confirmar-compra');
+        btn.disabled = true; btn.innerText = "GUARDANDO...";
+
+        if (ajustes.length > 0) {
+            const resPNR = await apiCall('updatePNR', { idTicket: idTicketEnFoco, ajustes });
+            if (resPNR.status !== "success") {
+                Toast.fire({ text: resPNR.message, icon: "error" });
+                btn.disabled = false; btn.innerText = "✓ Confirmar Compra";
+                return;
+            }
+        }
+
+        btn.disabled = false; btn.innerText = "✓ Confirmar Compra";
+        await ejecutarCompra();
+    };
+
+    async function ejecutarCompra() {
+        closeModal('modal-pnr');
+        closeModal('modal-detalles');
+        showLoading("Marcando como comprado...");
+        const res = await apiCall('markPurchased', { idTicket: idTicketEnFoco, comprobanteUrl: window._comprobanteUrl });
+        if (res.status === "success") {
+            sendAppNotifications("COMPRADO", idTicketEnFoco).catch(() => { });
+            await refreshDashboardSilencioso();
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+        hideLoading();
+    }
+
+    window.exportarALegacy = async () => {
+        const { isConfirmed } = await Toast.fire({
+            title: '¿Enviar a Orbix?',
+            html: `<p class="text-sm text-slate-500 font-bold">Se crearan registros en las hojas <b>Viajes</b> y <b>Reservas</b> del Google Sheet legacy.<br><br>Esta accion se puede repetir si necesitas re-enviar.</p>`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, enviar',
+            cancelButtonText: 'Cancelar'
+        });
+        if (!isConfirmed) return;
+
+        const btn = document.getElementById('btn-exportar-legacy');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Enviando...'; }
+
+        showLoading("Enviando a Orbix...");
+        const res = await apiCall('exportarALegacy', { idTicket: idTicketEnFoco });
+        hideLoading();
+
+        if (btn) { btn.disabled = false; btn.innerHTML = '🚀 Enviar a Orbix'; }
+
+        if (res.status === 'success') {
+            Swal.fire({
+                title: '¡Enviado a Orbix!',
+                html: `
+        <p class="text-sm text-slate-600 font-bold mb-4">${res.data.mensaje}</p>
+        <div class="text-left bg-slate-50 rounded-xl p-4 space-y-3">
+          <div>
+            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Viaje creado</p>
+            <p class="font-mono text-xs text-slate-700">${res.data.viajes[0]}</p>
+          </div>
+          <div>
+            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Reservas (${res.data.reservas.length})</p>
+            <p class="font-mono text-xs text-slate-700">${res.data.reservas.join(', ')}</p>
+          </div>
+          <div>
+            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Contactos procesados (${res.data.contactos.length})</p>
+            <p class="font-mono text-xs text-slate-700">${res.data.contactos.join(', ')}</p>
+          </div>
+        </div>`,
+                icon: 'success',
+                showCloseButton: true,
+                showConfirmButton: false
+            });
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    window.generarItinerarioPDF = async () => {
+        const { isConfirmed } = await Toast.fire({ title: 'Generar Itinerario', text: '¿Deseas generar el PDF del itinerario?', icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, generar PDF', cancelButtonText: 'Cancelar' });
+        if (!isConfirmed) return;
+        closeModal('modal-detalles'); showLoading("Construyendo PDF...");
+        const res = await apiCall('generateItineraryPDF', { idTicket: idTicketEnFoco });
+        hideLoading();
+        if (res.status === "success") {
+            Swal.fire({ title: 'PDF Listo!', html: `<p class="text-sm text-slate-500 font-bold mb-4">El documento fue generado.</p><a href="${res.data.url}" target="_blank" class="bg-indipris-main text-white px-8 py-4 rounded-xl font-black shadow-lg uppercase tracking-widest text-xs inline-block hover:bg-pink-700 transition"> Descargar PDF</a>`, icon: 'success', showConfirmButton: false, showCloseButton: true });
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MODAL COTIZACIONES — CORREGIDO: no re-renderiza todo el DOM en cada cambio de input
+    // Solo rebuilds el bloque de resumen de precios, no los inputs
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.openOptModal = () => {
+        document.getElementById('opt-idticket').value = idTicketEnFoco;
+        currentOpcionesPorServicio = {};
+
+        const nPax = (localData.ticketEnFoco.pasajeros || []).length || 1;
+        const politica = localData.ticketEnFoco.politica;
+        const getFeeForTipo = (tipo) => {
+            if (!politica) return 300;
+            const t = String(tipo).toUpperCase();
+            if (t === 'VUELO') return politica.feeVuelo || 300;
+            if (t === 'HOTEL') return politica.feeHotel || 300;
+            if (t === 'BUS') return politica.feeBus || 300;
+            return politica.feeOtro || 300;
+        };
+
+        // Parse existing option desc back to editable fields
+        const parseExisting = (o) => {
+            const desc = String(o[2] || '');
+            const get = (re) => { const m = desc.match(re); return m ? m[1].trim() : ''; };
+            const tramo = desc.includes('IDA</p>') ? 'IDA' : desc.includes('REGRESO</p>') ? 'REGRESO' : '';
+            return {
+                id: o[1] + '_edit_' + Math.random(),
+                _existingId: o[1], // keep reference to update instead of create new
+                tipo: 'VUELO', // will be overridden
+                desc: desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+                costo: String(o[3] || ''),
+                fee: String(o[4] || ''),
+                img: o[8] || '',
+                costoProveedor: String(o[9] || ''),
+                isUploadingImg: false,
+                v_aerolinea: get(/Aerolinea:<\/b>\s*([^<]+)/i),
+                v_fecha: get(/Fecha:<\/b>\s*([^\s|<]+)/i),
+                v_origen: get(/Ruta:<\/b>\s*([^-<>\s]+)/i),
+                v_destino: get(/Ruta:<\/b>\s*[^>]*->\s*([^<]+)/i),
+                v_hSalida: '',
+                v_hLlegada: '',
+                v_num: get(/Vuelo:<\/b>\s*([^|<]+)/i),
+                v_pnr: get(/PNR:<\/b>\s*(?:<[^>]+>)*\s*([^<]+)/i),
+                v_comentario: get(/italic[^>]*>\s*([^<]+)/i),
+                h_nombre: get(/Hotel:<\/b>\s*([^<]+)/i),
+                h_dir: get(/Direccion:<\/b>\s*([^<]+)/i),
+                h_desayuno: get(/Regimen:<\/b>\s*([^<]+)/i) || 'Desayuno Incluido',
+                _tramo: tramo,
+                _parentSvcId: null
+            };
+        };
+
+        // Check for existing Propuesta options
+        const existingOpts = (localData.ticketEnFoco.opciones || []).filter(o => o[6] === 'Propuesta');
+
+        // Extract horario from parsed desc
+        const parseHorario = (desc) => {
+            const m = String(desc).match(/Horario:<\/b>\s*(\S+)\s*-\s*(\S+)/i);
+            return m ? [m[1], m[2]] : ['', ''];
+        };
+
+        localData.ticketEnFoco.servicios.forEach((s, idx) => {
+            const svcId = s[7] || ('old_svc_' + idx);
+            const tipo = s[1];
+            const detalles = String(s[6] || '');
+            const esRedondo = tipo === 'VUELO' && detalles.toLowerCase().includes('redondo');
+            const origen = String(s[2] || '').toUpperCase();
+            const destino = String(s[3] || '').toUpperCase();
+            const fechaIn = formatToDateInput(s[4]) || '';
+            const fechaOut = formatToDateInput(s[5]) || '';
+            const feeInicial = String(getFeeForTipo(tipo) * nPax);
+
+            // Find existing options for this service
+            const svcExisting = existingOpts.filter(o => o[7] === svcId);
+
+            if (esRedondo) {
+                const svcIda = svcId + '_IDA';
+                const svcReg = svcId + '_REG';
+
+                const existIda = svcExisting.filter(o => String(o[2]).includes('IDA</p>'));
+                const existReg = svcExisting.filter(o => String(o[2]).includes('REGRESO</p>'));
+
+                if (existIda.length > 0) {
+                    currentOpcionesPorServicio[svcIda] = existIda.map(o => {
+                        const parsed = parseExisting(o);
+                        const [hS, hL] = parseHorario(o[2]);
+                        return { ...parsed, tipo: 'VUELO', v_hSalida: hS, v_hLlegada: hL, _parentSvcId: svcId, _tramo: 'IDA' };
+                    });
+                } else {
+                    currentOpcionesPorServicio[svcIda] = [{
+                        id: Date.now() + Math.random(), tipo: 'VUELO',
+                        desc: '', costo: '', fee: feeInicial, img: '', costoProveedor: '', isUploadingImg: false,
+                        v_fecha: fechaIn, v_origen: origen, v_destino: destino,
+                        v_hSalida: '', v_hLlegada: '', v_num: '', v_pnr: '', v_aerolinea: '', v_comentario: '',
+                        h_nombre: '', h_dir: '', h_desayuno: 'Desayuno Incluido',
+                        _parentSvcId: svcId, _tramo: 'IDA'
+                    }];
+                }
+
+                if (existReg.length > 0) {
+                    currentOpcionesPorServicio[svcReg] = existReg.map(o => {
+                        const parsed = parseExisting(o);
+                        const [hS, hL] = parseHorario(o[2]);
+                        return { ...parsed, tipo: 'VUELO', v_hSalida: hS, v_hLlegada: hL, _parentSvcId: svcId, _tramo: 'REGRESO' };
+                    });
+                } else {
+                    currentOpcionesPorServicio[svcReg] = [{
+                        id: Date.now() + Math.random() + 1, tipo: 'VUELO',
+                        desc: '', costo: '', fee: feeInicial, img: '', costoProveedor: '', isUploadingImg: false,
+                        v_fecha: fechaOut, v_origen: destino, v_destino: origen,
+                        v_hSalida: '', v_hLlegada: '', v_num: '', v_pnr: '', v_aerolinea: '', v_comentario: '',
+                        h_nombre: '', h_dir: '', h_desayuno: 'Desayuno Incluido',
+                        _parentSvcId: svcId, _tramo: 'REGRESO'
+                    }];
+                }
+            } else {
+                if (svcExisting.length > 0) {
+                    currentOpcionesPorServicio[svcId] = svcExisting.map(o => {
+                        const parsed = parseExisting(o);
+                        const [hS, hL] = parseHorario(o[2]);
+                        return { ...parsed, tipo, v_hSalida: hS, v_hLlegada: hL };
+                    });
+                } else {
+                    currentOpcionesPorServicio[svcId] = [{
+                        id: Date.now() + Math.random(), tipo,
+                        desc: '', costo: '', fee: feeInicial, img: '', costoProveedor: '', isUploadingImg: false,
+                        v_fecha: fechaIn, v_origen: origen, v_destino: destino,
+                        v_hSalida: '', v_hLlegada: '', v_num: '', v_pnr: '', v_aerolinea: '',
+                        h_nombre: tipo === 'HOTEL' ? origen : '', h_dir: tipo === 'HOTEL' ? destino : '',
+                        h_desayuno: 'Desayuno Incluido'
+                    }];
+                }
+            }
+        });
+
+        renderOptModal();
+        // Set IVA checkbox from empresa politica
+        const ivaCheckbox = document.getElementById('opt-aplica-iva');
+        if (ivaCheckbox) {
+            const _pol = localData.ticketEnFoco.politica;
+            ivaCheckbox.checked = _pol ? _pol.aplicaIVA !== false : true;
+        }
+        document.getElementById('modal-opt').classList.remove('hidden');
+    };
+
+    window.addOpcionSlot = (svcId) => {
+        const existing = currentOpcionesPorServicio[svcId];
+        if (!existing) return;
+        const tipo = existing[0]?.tipo || 'BUS';
+        const tramo = existing[0]?._tramo || null;
+        const parentId = existing[0]?._parentSvcId || null;
+        const nPax = (localData.ticketEnFoco.pasajeros || []).length || 1;
+        const feeInicial = String(300 * nPax);
+        if (existing.length >= 3) { Toast.fire({ text: "Máximo 3 opciones por servicio.", icon: "info" }); return; }
+        existing.push({
+            id: Date.now() + Math.random(), tipo,
+            desc: '', costo: '', fee: feeInicial, img: '', costoProveedor: '', isUploadingImg: false,
+            v_fecha: existing[0]?.v_fecha || '', v_origen: existing[0]?.v_origen || '', v_destino: existing[0]?.v_destino || '',
+            v_hSalida: '', v_hLlegada: '', v_num: '', v_pnr: '', v_aerolinea: '',
+            h_nombre: existing[0]?.h_nombre || '', h_dir: existing[0]?.h_dir || '', h_desayuno: 'Desayuno Incluido',
+            _parentSvcId: parentId, _tramo: tramo
+        });
+        const newOptId = existing[existing.length - 1].id;
+        renderOptModal();
+        setTimeout(() => {
+            const el = document.getElementById('opt-slot-' + newOptId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    };
+
+    window.removeOpcionSlot = (svcId, optId) => {
+        currentOpcionesPorServicio[svcId] = currentOpcionesPorServicio[svcId].filter(o => o.id !== optId);
+        renderOptModal();
+    };
+
+    // updateOpcion — actualiza el dato Y solo refresca el resumen de precios (sin re-render completo)
+    window.updateOpcion = (svcId, optId, field, value) => {
+        const op = currentOpcionesPorServicio[svcId].find(o => o.id === optId);
+        if (!op) return;
+        op[field] = value;
+        if (field === 'costo' || field === 'fee') {
+            _recalcPriceSummary(svcId, optId);
+        }
+    };
+
+    // Recalcular resumen de precios respetando checkbox IVA
+    function _recalcPriceSummary(svcId, optId) {
+        const op = currentOpcionesPorServicio[svcId]?.find(o => o.id === optId);
+        if (!op) return;
+        const nPax = (localData.ticketEnFoco.pasajeros || []).length || 1;
+        const aplicaIVA = document.getElementById('opt-aplica-iva')?.checked ?? true;
+        const c = Number(op.costo || 0);
+        const f = Number(op.fee || 0);
+        const sub = c + f;
+        const iva = aplicaIVA ? sub * 0.16 : 0;
+        const tot = sub + iva;
+        const summary = document.getElementById(`price-summary-${optId}`);
+        if (summary) summary.innerHTML = buildPriceSummaryHTML(f, nPax, sub, iva, tot, aplicaIVA);
+    }
+
+    // Cuando cambia el checkbox IVA, recalcular TODOS los resúmenes
+    document.addEventListener('change', (e) => {
+        if (e.target?.id === 'opt-aplica-iva') {
+            for (const svcId in currentOpcionesPorServicio) {
+                (currentOpcionesPorServicio[svcId] || []).forEach(op => {
+                    _recalcPriceSummary(svcId, op.id);
+                });
+            }
+        }
+    });
+
+    function buildPriceSummaryHTML(feeUnit, nPax, sub, iva, tot, aplicaIVA) {
+        const feeUnitario = nPax > 0 ? feeUnit / nPax : feeUnit;
+        return `
+  <div class="mt-3 space-y-1">
+    <div class="flex items-center gap-2 text-[9px] text-slate-500 font-bold">
+      <span class="bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-full font-black">
+        Fee: ${formatCurrency(feeUnitario)} × ${nPax} pax = ${formatCurrency(feeUnit)}
+      </span>
+      ${!aplicaIVA ? '<span class="bg-amber-50 text-amber-600 border border-amber-100 px-2 py-0.5 rounded-full font-black">SIN IVA</span>' : ''}
+    </div>
+    <div class="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100 text-[9px] font-bold text-slate-500 uppercase text-center shadow-sm">
+      <div class="flex-1 border-r border-slate-100">Subtotal<br><span class="text-slate-800 font-black">${formatCurrency(sub)}</span></div>
+      ${aplicaIVA ? `<div class="flex-1 border-r border-slate-100">IVA 16%<br><span class="text-slate-800 font-black">${formatCurrency(iva)}</span></div>` : ''}
+      <div class="flex-1 text-pink-600">Total<br><span class="block font-black text-xs">${formatCurrency(tot)}</span></div>
+    </div>
+  </div>`;
+    }
+
+    window.renderOptModal = () => {
+        const svcs = localData.ticketEnFoco.servicios;
+        let html = '';
+
+        svcs.forEach((s, idx) => {
+            const svcId = s[7] || ('old_svc_' + idx);
+            const detalles = String(s[6] || '');
+            const esRedondo = s[1] === 'VUELO' && detalles.toLowerCase().includes('redondo');
+
+            if (esRedondo) {
+                // Vuelo redondo: dos bloques separados dentro del mismo servicio
+                const svcIda = svcId + '_IDA';
+                const svcReg = svcId + '_REG';
+                const optsIda = currentOpcionesPorServicio[svcIda] || [];
+                const optsReg = currentOpcionesPorServicio[svcReg] || [];
+                const baseLabel = `${s[1]} | ${s[2]} -> ${s[3]}`;
+
+                html += `<div class="mb-8 border-2 border-blue-200 rounded-2xl p-4 md:p-6 bg-white shadow-sm">
+        <h4 class="text-[10px] md:text-xs font-black text-blue-700 uppercase tracking-widest mb-1 pb-2"> ${baseLabel} - Vuelo Redondo</h4>
+        <p class="text-[9px] text-slate-400 font-bold mb-4">Carga opciones de ida y regreso de forma independiente.</p>
+
+        <!-- IDA -->
+        <div class="mb-6 border border-emerald-200 rounded-xl p-4 bg-emerald-50/30">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[9px] font-black text-emerald-700 uppercase tracking-widest bg-emerald-100 px-3 py-1 rounded-full">-> IDA: ${s[2]} -> ${s[3]}</span>
+            <button onclick="addOpcionSlot('${svcIda}')" class="text-[9px] font-black text-emerald-600 bg-white border border-emerald-200 px-3 py-1 rounded-full hover:bg-emerald-50 transition shadow-sm">+ Opcion</button>
+          </div>
+          <div class="space-y-4">
+            ${optsIda.map((o, i) => buildOpcionHTML(svcIda, o, i, optsIda.length)).join('')}
+          </div>
+        </div>
+
+        <!-- REGRESO -->
+        <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50/30">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[9px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-100 px-3 py-1 rounded-full"><- REGRESO: ${s[3]} -> ${s[2]}</span>
+            <button onclick="addOpcionSlot('${svcReg}')" class="text-[9px] font-black text-indigo-600 bg-white border border-indigo-200 px-3 py-1 rounded-full hover:bg-indigo-50 transition shadow-sm">+ Opcion</button>
+          </div>
+          <div class="space-y-4">
+            ${optsReg.map((o, i) => buildOpcionHTML(svcReg, o, i, optsReg.length)).join('')}
+          </div>
+        </div>
+      </div>`;
+            } else {
+                const label = `${s[1]} | ${s[2]} -> ${s[3]}`;
+                const opts = currentOpcionesPorServicio[svcId] || [];
+                html += `<div class="mb-8 border-2 border-slate-200 rounded-2xl p-4 md:p-6 bg-white shadow-sm">
+        <h4 class="text-[10px] md:text-xs font-black text-pink-600 uppercase tracking-widest mb-4 border-b-2 border-slate-100 pb-2">${label}</h4>
+        <div class="space-y-4">
+          ${opts.map((o, index) => buildOpcionHTML(svcId, o, index, opts.length)).join('')}
+        </div>
+        <button onclick="addOpcionSlot('${svcId}')" class="text-[10px] font-black text-pink-600 mt-4 bg-pink-50 px-4 py-2 rounded-full hover:bg-pink-100 transition shadow-sm w-full md:w-auto">+ AÑADIR OTRA OPCION</button>
+      </div>`;
+            }
+        });
+
+        document.getElementById('opciones-container').innerHTML = html;
+    };
+
+    function buildOpcionHTML(svcId, o, index, total) {
+        const nPax = (localData.ticketEnFoco?.pasajeros || []).length || 1;
+        const c = Number(o.costo || 0);
+        const feeUnit = Number(o.fee || 0);
+        const sub = c + feeUnit;
+        const iva = sub * 0.16;
+        const tot = sub + iva;
+        let camposHtml = '';
+
+        if (o.tipo === 'VUELO') {
+            camposHtml = `
+    <!-- Aerolinea - campo prominente y obligatorio -->
+    <div class="mb-3 bg-indigo-50 border-2 border-indigo-300 rounded-xl p-3 flex items-center gap-3">
+      <span class="text-lg shrink-0"></span>
+      <div class="flex-1">
+        <label class="text-[9px] font-black text-indigo-700 uppercase tracking-widest block mb-1">Aerolinea <span class="text-red-500">*</span></label>
+        <input type="text" value="${o.v_aerolinea || ''}" onchange="updateOpcion('${svcId}',${o.id},'v_aerolinea',this.value)"
+          placeholder="Ej. Aeromexico, Volaris, United..."
+          class="w-full border-b-2 border-indigo-300 py-1.5 outline-none font-black text-sm bg-transparent focus:border-indigo-600 text-indigo-800 placeholder-indigo-300"
+          required>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Fecha</label><input type="date" value="${o.v_fecha}" onchange="updateOpcion('${svcId}',${o.id},'v_fecha',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Origen</label><input type="text" value="${o.v_origen}" onchange="updateOpcion('${svcId}',${o.id},'v_origen',this.value)" placeholder="MEX" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Destino</label><input type="text" value="${o.v_destino}" onchange="updateOpcion('${svcId}',${o.id},'v_destino',this.value)" placeholder="CUN" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">No. Vuelo</label><input type="text" value="${o.v_num}" onchange="updateOpcion('${svcId}',${o.id},'v_num',this.value)" placeholder="AM500" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Salida</label><input type="time" value="${o.v_hSalida}" onchange="updateOpcion('${svcId}',${o.id},'v_hSalida',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Llegada</label><input type="time" value="${o.v_hLlegada}" onchange="updateOpcion('${svcId}',${o.id},'v_hLlegada',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">PNR</label><input type="text" value="${o.v_pnr}" onchange="updateOpcion('${svcId}',${o.id},'v_pnr',this.value)" placeholder="X7B9M2" class="w-full border-b-2 border-slate-200 py-2 outline-none font-black text-xs bg-transparent text-pink-600 focus:border-indipris-main uppercase"></div>
+    </div>`;
+        } else if (o.tipo === 'HOTEL') {
+            camposHtml = `<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Nombre del Hotel</label><input type="text" value="${o.h_nombre}" onchange="updateOpcion('${svcId}',${o.id},'h_nombre',this.value)" placeholder="Marriott Reforma" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Direccion</label><input type="text" value="${o.h_dir}" onchange="updateOpcion('${svcId}',${o.id},'h_dir',this.value)" placeholder="Paseo de la Reforma..." class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Regimen</label>
+        <select onchange="updateOpcion('${svcId}',${o.id},'h_desayuno',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main">
+          <option ${o.h_desayuno === 'Solo Habitación' ? 'selected' : ''}>Solo Habitacion</option>
+          <option ${o.h_desayuno === 'Desayuno Incluido' ? 'selected' : ''}>Desayuno Incluido</option>
+          <option ${o.h_desayuno === 'Media Pensión' ? 'selected' : ''}>Media Pension</option>
+          <option ${o.h_desayuno === 'All Inclusive' ? 'selected' : ''}>All Inclusive</option>
+        </select>
+      </div>
+    </div>`;
+        } else {
+            camposHtml = `<div class="mb-4"><label class="text-[8px] font-black text-slate-400 uppercase">Descripcion</label><input type="text" placeholder="Detalles de la opcion..." value="${o.desc}" onchange="updateOpcion('${svcId}',${o.id},'desc',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-sm bg-transparent placeholder-slate-400 focus:border-indipris-main"></div>`;
+        }
+
+        return `<div id="opt-slot-${o.id}" class="p-4 border-2 border-slate-100 shadow-sm rounded-xl relative bg-slate-50">
+    <span class="absolute -top-2 left-4 bg-slate-800 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-sm">OPCION ${index + 1}</span>
+    ${total > 1 ? `<button onclick="removeOpcionSlot('${svcId}',${o.id})" class="absolute top-2 right-2 text-red-500 font-bold text-xs hover:text-red-700 w-6 h-6 flex items-center justify-center bg-red-50 rounded-full">x</button>` : ''}
+    <div class="mt-4">
+      ${camposHtml}
+      <!-- Comentarios visibles para el cliente -->
+      <div class="mb-4">
+        <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1"> Comentarios para el cliente</label>
+        <textarea rows="2" placeholder="Ej: Incluye maleta documentada, salida temprana recomendada..."
+          onchange="updateOpcion('${svcId}',${o.id},'comentario',this.value)"
+          class="w-full border-2 border-slate-200 rounded-xl p-3 outline-none font-bold text-xs text-slate-700 bg-white focus:border-indipris-main resize-none placeholder-slate-300">${o.comentario || ''}</textarea>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-4 mt-2">
+        <div class="bg-red-50 p-2 rounded-lg border border-red-200 shadow-inner">
+          <label class="text-[8px] font-black text-red-600 uppercase">[P] Costo Neto (Privado)</label>
+          <input type="number" value="${o.costoProveedor}" onchange="updateOpcion('${svcId}',${o.id},'costoProveedor',this.value)" placeholder="0.00" class="w-full bg-transparent border-b-2 border-red-200 py-1 outline-none font-black text-red-800 text-sm focus:border-red-400 placeholder-red-300">
+        </div>
+        <div class="p-2">
+          <label class="text-[8px] font-black text-slate-400 uppercase">Costo Base Venta</label>
+          <input type="number" value="${o.costo}" onchange="updateOpcion('${svcId}',${o.id},'costo',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+        </div>
+        <div class="p-2">
+          <label class="text-[8px] font-black text-slate-400 uppercase">Fee Total (${nPax} pax × $300)</label>
+          <input type="number" value="${o.fee}" onchange="updateOpcion('${svcId}',${o.id},'fee',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+        </div>
+      </div>
+      <div class="mt-4">
+        <label class="block w-full border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50 rounded-xl p-3 text-center cursor-pointer transition relative overflow-hidden bg-white">
+          ${o.img ? `<img src="${o.img}" class="absolute inset-0 w-full h-full object-cover opacity-40"><span class="relative z-10 text-[10px] font-black text-pink-700">v Foto Subida</span>` : o.isUploadingImg ? `<span class="text-[10px] font-black text-slate-500">... Subiendo...</span>` : `<span class="text-[10px] font-black text-slate-500">[img] Subir foto de referencia (Opcional)</span>`}
+          <input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}',${o.id},this)">
+        </label>
+      </div>
+      <!-- Resumen de precios - se actualiza solo sin re-render del form -->
+      <div id="price-summary-${o.id}" class="mt-3 price-summary">
+        ${buildPriceSummaryHTML(c, feeUnit, nPax, sub, iva, tot)}
+      </div>
+    </div>
+  </div>`;
+    }
+
+    window.saveAllOptions = async () => {
+        const payloadOptions = [];
+        for (const svcId in currentOpcionesPorServicio) {
+            for (const op of currentOpcionesPorServicio[svcId]) {
+
+                // Eliminamos la restricción. Si están vacíos, se convierten en 0 automáticamente.
+                if (!op.costo) op.costo = 0;
+                if (!op.fee) op.fee = 0;
+
+                let finalDesc = op.desc;
+                if (op.tipo === 'VUELO') {
+                    if (!op.v_fecha || !op.v_origen || !op.v_destino) return Toast.fire({ text: "Faltan Fecha, Origen o Destino.", icon: "warning" });
+                    if (!op.v_aerolinea || !op.v_aerolinea.trim()) return Toast.fire({ text: "La aerolínea es obligatoria en vuelos.", icon: "warning" });
+                    const tramoLabel = op._tramo ? `<p class="text-[9px] font-black uppercase tracking-widest" style="color:#6366f1">${op._tramo === 'IDA' ? '-> IDA' : '<- REGRESO'}</p>` : '';
+                    const comentarioHtml = op.comentario ? `<p class="mt-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2"> ${op.comentario}</p>` : '';
+                    finalDesc = `<div class="space-y-1">${tramoLabel}<p><b>Aerolinea:</b> ${op.v_aerolinea.trim()}</p><p><b>Ruta:</b> ${op.v_origen.toUpperCase()} -> ${op.v_destino.toUpperCase()}</p><p><b>Fecha:</b> ${op.v_fecha} | <b>Horario:</b> ${op.v_hSalida || 'TBA'} - ${op.v_hLlegada || 'TBA'}</p><p><b>Vuelo:</b> ${(op.v_num || 'Pendiente').toUpperCase()} | <b>PNR:</b> <span class="font-mono text-indipris-main font-black">${(op.v_pnr || 'Pendiente').toUpperCase()}</span></p>${comentarioHtml}</div>`;
+                } else if (op.tipo === 'HOTEL') {
+                    if (!op.h_nombre) return Toast.fire({ text: "Agrega el nombre del hotel.", icon: "warning" });
+                    const comentarioHtml = op.comentario ? `<p class="mt-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2"> ${op.comentario}</p>` : '';
+                    finalDesc = `<div class="space-y-1"><p><b>Hotel:</b> ${op.h_nombre}</p><p><b>Direccion:</b> ${op.h_dir || 'No especificada'}</p><p><b>Regimen:</b> ${op.h_desayuno}</p>${comentarioHtml}</div>`;
+                } else {
+                    if (!op.desc) return Toast.fire({ text: "Agrega una descripción.", icon: "warning" });
+                    const comentarioHtml = op.comentario ? `<p class="mt-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2"> ${op.comentario}</p>` : '';
+                    finalDesc = op.comentario ? `<div class="space-y-1"><p>${op.desc}</p>${comentarioHtml}</div>` : op.desc;
+                }
+                // Usar _parentSvcId si es un sub-slot de vuelo redondo, si no usar svcId directo
+                const idServicioReal = op._parentSvcId || svcId;
+                const ivaChecked = document.getElementById('opt-aplica-iva')?.checked ?? true;
+                const ivaMultiplier = ivaChecked ? 1.16 : 1.0;
+                payloadOptions.push({ idServicio: idServicioReal, desc: finalDesc, costo: op.costo, fee: op.fee, total: (Number(op.costo) + Number(op.fee)) * ivaMultiplier, img: op.img || '', costoProveedor: op.costoProveedor || 0, existingId: op._existingId || null });
+            }
+        }
+        const btn = document.getElementById('btn-save-opt');
+        btn.disabled = true; btn.innerText = "ENVIANDO...";
+        const res = await apiCall('saveAllOptions', { idTicket: idTicketEnFoco, opciones: payloadOptions });
+        if (res.status === "success") {
+            // Notificaciones en background - no bloquear la UI
+            sendAppNotifications("COTIZADO", idTicketEnFoco).catch(() => { });
+            closeModal('modal-opt'); closeModal('modal-detalles');
+            showLoading("Actualizando..."); await refreshDashboardSilencioso(); hideLoading();
+            Toast.fire({ text: 'Cotización enviada al cliente', icon: 'success', timer: 2000, showConfirmButton: false });
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+        btn.disabled = false; btn.innerText = "ENVIAR COTIZACIÓN AL CLIENTE";
+    };
+
+    /**
+     * Comprime una imagen antes de subirla.
+     * Devuelve un objeto { base64, mimeType } listo para enviar.
+     * maxW/maxH: dimensión máxima en px. quality: 0-1 para JPEG.
+     */
+    function compressImage(file, maxW = 800, maxH = 800, quality = 0.75) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = reject;
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onerror = reject;
+                img.onload = () => {
+                    let { width, height } = img;
+                    const ratio = Math.min(maxW / width, maxH / height, 1); // nunca agrandar
+                    width = Math.round(width * ratio);
+                    height = Math.round(height * ratio);
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+                    // Siempre convertir a JPEG para máxima compresión
+                    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                    const base64 = dataUrl.split(',')[1];
+                    resolve({ base64, mimeType: 'image/jpeg' });
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    window.uploadOptionImage = async (svcId, optId, inputEl) => {
+        const file = inputEl.files[0];
+        if (!file) return;
+
+        const op = currentOpcionesPorServicio[svcId].find(o => o.id === optId);
+        if (!op) return;
+
+        // Actualizar label sin re-render completo
+        const label = inputEl.parentElement;
+        label.innerHTML = `<span class="text-[10px] font-black text-slate-500"> Comprimiendo...</span>`;
+
+        // Comprimir antes de enviar para que quepa en la celda de Sheets (~49KB límite)
+        let compressed;
+        try {
+            compressed = await compressImage(file, 600, 600, 0.65);
+        } catch (e) {
+            Toast.fire({ text: "No se pudo procesar la imagen.", icon: "error" });
+            label.innerHTML = `<span class="text-[10px] font-black text-slate-500"> Subir foto de referencia (Opcional)</span><input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}',${optId},this)">`;
+            return;
+        }
+
+        label.innerHTML = `<span class="text-[10px] font-black text-slate-500"> Subiendo...</span>`;
+
+        const res = await apiCall('uploadFile', {
+            fileName: `OPT_${idTicketEnFoco}_${file.name}`,
+            mimeType: compressed.mimeType,
+            base64: compressed.base64,
+            mode: 'base64'
+        });
+
+        if (res.status === "success") {
+            op.img = res.data.url; // data URI listo para <img src>
+            label.innerHTML = `<img src="${op.img}" class="absolute inset-0 w-full h-full object-cover opacity-40"><span class="relative z-10 text-[10px] font-black text-pink-700"> Foto Subida</span><input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}',${optId},this)">`;
+            // Actualizar el resumen de precios por si acaso sin perder el estado
+            const summary = document.getElementById(`price-summary-${optId}`);
+            if (summary) { /* ya está al día, no hace falta re-calcular */ }
+        } else {
+            Toast.fire({ text: res.message || "Error al subir imagen.", icon: "error" });
+            label.innerHTML = `<span class="text-[10px] font-black text-slate-500"> Subir foto de referencia (Opcional)</span><input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}',${optId},this)">`;
+        }
+    };
+
+    window.uploadComprobanteCompra = async (inputEl) => {
+        const file = inputEl.files[0];
+        if (!file) return;
+
+        const label = document.getElementById('comprobante-upload-label');
+        if (!label) return;
+        label.innerHTML = `<span class="text-[10px] font-black text-slate-500"> Comprimiendo...</span>`;
+
+        let compressed;
+        try {
+            compressed = await compressImage(file, 600, 600, 0.65);
+        } catch (e) {
+            Toast.fire({ text: "No se pudo procesar la imagen.", icon: "error" });
+            label.innerHTML = `<span id="comprobante-upload-text" class="text-[10px] font-black text-indigo-600">📎 Subir captura o comprobante de compra</span><input type="file" id="comprobante-file-input" class="hidden" accept="image/*" onchange="uploadComprobanteCompra(this)">`;
+            return;
+        }
+
+        label.innerHTML = `<span class="text-[10px] font-black text-slate-500"> Subiendo...</span>`;
+
+        const res = await apiCall('uploadFile', {
+            fileName: `COMPROBANTE_${idTicketEnFoco}_${file.name}`,
+            mimeType: compressed.mimeType,
+            base64: compressed.base64,
+            mode: 'base64'
+        });
+
+        if (res.status === "success") {
+            window._comprobanteUrl = res.data.url; // data URI listo para guardar
+            label.innerHTML = `<img src="${window._comprobanteUrl}" class="absolute inset-0 w-full h-full object-cover opacity-40"><span class="relative z-10 text-[10px] font-black text-indigo-700">✓ Comprobante Subido</span><input type="file" id="comprobante-file-input" class="hidden" accept="image/*" onchange="uploadComprobanteCompra(this)">`;
+        } else {
+            Toast.fire({ text: res.message || "Error al subir comprobante.", icon: "error" });
+            label.innerHTML = `<span id="comprobante-upload-text" class="text-[10px] font-black text-indigo-600">📎 Subir captura o comprobante de compra</span><input type="file" id="comprobante-file-input" class="hidden" accept="image/*" onchange="uploadComprobanteCompra(this)">`;
+        }
+    };
+</script>

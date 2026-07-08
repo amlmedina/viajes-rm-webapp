@@ -19,7 +19,7 @@ function resolveIncludes(content: string, baseDir: string): string {
 }
 
 export async function GET() {
-  const baseDir = path.join(process.cwd(), '..');
+  const baseDir = path.join(process.cwd(), 'gas');
   const indexHtmlPath = path.join(baseDir, 'Index.html');
   
   if (!fs.existsSync(indexHtmlPath)) {

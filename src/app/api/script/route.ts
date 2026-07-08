@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 
 export async function GET() {
-  const rootDir = path.join(process.cwd(), '..'); // /Users/alejandro/Viajes RM/
-  const webAppDir = process.cwd();              // /Users/alejandro/Viajes RM/web-app/
+  const rootDir = path.join(process.cwd(), 'gas'); 
+  const webAppDir = process.cwd();              
   
   // The modules exactly as defined in Router.gs (matching spellings)
   const modules = [

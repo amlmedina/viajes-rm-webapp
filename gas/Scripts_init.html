@@ -1,0 +1,163 @@
+<script>
+    console.log('[LOAD] Scripts_Init OK');
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function initAppData() {
+        try {
+            // Lanzar getDashboard, getCompanies y config WA en paralelo
+            const promises = [
+                apiCall('getDashboard'),
+                apiCall('getCompanies')
+            ];
+            // Cargar config WA para roles que envían notificaciones
+            if (session.role === 'super' || session.role === 'indipris' || session.role === 'admin') {
+                promises.push(apiCall('getConfigWA'));
+            }
+            const [dashRes, companiesRes, waRes] = await Promise.all(promises);
+
+            if (dashRes.status === "success") {
+                localData.dashboard = dashRes.data.solicitudes;
+                localData.serviciosResumen = dashRes.data.serviciosResumen;
+                localData.pasajerosResumen = dashRes.data.pasajerosResumen || {};
+                if (session.role !== 'viajero') {
+                    document.getElementById('stat-total').innerText = formatCurrency(dashRes.data.totalAutorizado);
+                }
+            } else {
+                cerrarSesion();
+                return;
+            }
+
+            if (companiesRes.status === "success") {
+                localData.companies = companiesRes.data;
+            }
+
+            // Cargar config WhatsApp si está disponible
+            if (waRes && waRes.status === "success") {
+                waConfig = waRes.data;
+                waConfigLoaded = true;
+            }
+
+            // Catálogos de nombres de pasajeros y eventos en paralelo, sin bloquear
+            apiCall('getCatalogos').then(catRes => {
+                if (catRes.status === "success") {
+                    const dl = document.getElementById('lista-nombres');
+                    const nombres = (catRes.data.pasajeros || []).map(p => typeof p === 'string' ? p : p.nombre).filter(Boolean);
+                    dl.innerHTML = nombres.map(n => `<option value="${n}">`).join('');
+                    // Poblar datalist de eventos
+                    const dle = document.getElementById('lista-eventos');
+                    if (dle && catRes.data.eventos) {
+                        dle.innerHTML = catRes.data.eventos.filter(e => e).map(e => `<option value="${e}">`).join('');
+                    }
+                }
+            });
+
+            proceedToDashboardReady();
+            setInterval(refreshDashboardSilencioso, 180000);
+        } catch (e) {
+            // Error inesperado — cerrar sesión y mostrar login limpio
+            safeStorage.removeItem('indipris_session_secure');
+            hideLoading();
+            document.getElementById('login-view').classList.remove('hidden');
+        }
+    }
+
+    function proceedToDashboardReady() {
+        document.getElementById('user-display').innerText = "Hola, " + session.name;
+        document.getElementById('dash-role').innerText = session.role;
+        // Resolver nombre de empresa para mostrar en header
+        const _headerEmpIds = (session.empresaId || '').split(',').map(s => s.trim()).filter(Boolean);
+        let _headerEmpNombre = session.empresa;
+        if (_headerEmpIds.length > 0 && localData.companies.length > 0) {
+            const c = localData.companies.find(c => c.id === _headerEmpIds[0]);
+            if (c) _headerEmpNombre = c.nombre;
+        }
+        document.getElementById('dash-empresa').innerText = _headerEmpNombre;
+
+        // ── Asegurar que paneles restringidos estén ocultos por defecto ──
+        ['usuarios', 'notificaciones', 'reporte', 'walog', 'rpdetalle'].forEach(t => {
+            const panel = document.getElementById('dashboard-' + t);
+            if (panel) panel.classList.add('hidden');
+        });
+        // Ocultar select de admin por defecto
+        const superSel = document.getElementById('super-menu-select');
+        if (superSel) superSel.classList.add('hidden');
+
+        // Stats y tabs visibles para admin, indipris y super
+        if (session.role === 'admin' || session.role === 'indipris' || session.role === 'super') {
+            document.getElementById('admin-stats').classList.remove('hidden');
+            document.getElementById('admin-stats').classList.add('grid');
+            document.getElementById('admin-tabs').classList.remove('hidden');
+            document.getElementById('admin-tabs').classList.add('flex');
+
+            if (session.role === 'super') {
+                document.getElementById('super-menu-select').classList.remove('hidden');
+                document.getElementById('filter-ejecutivo').classList.remove('hidden');
+                document.getElementById('btn-csv-dash').classList.remove('hidden');
+            }
+            if (session.role === 'indipris') {
+                document.getElementById('filter-ejecutivo').classList.remove('hidden');
+            }
+        }
+
+        actualizarDropdownsFiltro();
+        showDashboard();
+        if (deepLinkTicket) { setTimeout(() => openDetalles(deepLinkTicket), 500); deepLinkTicket = null; }
+        hideLoading();
+    }
+
+    async function refreshDashboardSilencioso() {
+        const [dashRes, companiesRes] = await Promise.all([
+            apiCall('getDashboard'),
+            apiCall('getCompanies')
+        ]);
+
+        if (companiesRes.status === "success") {
+            localData.companies = companiesRes.data;
+        }
+
+        if (dashRes.status === "success") {
+            localData.dashboard = dashRes.data.solicitudes;
+            localData.serviciosResumen = dashRes.data.serviciosResumen;
+            localData.pasajerosResumen = dashRes.data.pasajerosResumen || {};
+            if (session.role === 'admin' || session.role === 'indipris' || session.role === 'super') {
+                const elTotal = document.getElementById('stat-total');
+                if (elTotal) elTotal.innerText = formatCurrency(dashRes.data.totalAutorizado);
+            }
+            if (!document.getElementById('dashboard-view').classList.contains('hidden')) {
+                actualizarDropdownsFiltro();
+                renderDashboardTable();
+            }
+        }
+
+        // Refrescar catálogos (pasajeros, eventos) en background
+        apiCall('getCatalogos').then(catRes => {
+            if (catRes.status === "success") {
+                const dl = document.getElementById('lista-nombres');
+                if (dl) {
+                    const nombres = (catRes.data.pasajeros || []).map(p => typeof p === 'string' ? p : p.nombre).filter(Boolean);
+                    dl.innerHTML = nombres.map(n => `<option value="${n}">`).join('');
+                }
+                const dle = document.getElementById('lista-eventos');
+                if (dle && catRes.data.eventos) {
+                    dle.innerHTML = catRes.data.eventos.filter(e => e).map(e => `<option value="${e}">`).join('');
+                }
+            }
+        }).catch(() => { });
+    }
+
+    // Botón de actualización manual
+    window.forceRefresh = async () => {
+        const btn = document.getElementById('btn-refresh');
+        if (btn) { btn.style.animation = 'spin 0.7s linear infinite'; btn.disabled = true; }
+        showLoading('Actualizando...');
+        await refreshDashboardSilencioso();
+        // También refrescar finanzas si estaban cargadas
+        localData.finanzas = null;
+        hideLoading();
+        if (btn) { btn.style.animation = ''; btn.disabled = false; }
+        Toast.fire({ text: 'Datos actualizados', icon: 'success', timer: 1500, showConfirmButton: false, toast: true, position: 'bottom-end' });
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // NOTIFICACIONES WHATSAPP
+    // ─────────────────────────────────────────────────────────────────────────────
+</script>

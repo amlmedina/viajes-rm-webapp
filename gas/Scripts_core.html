@@ -1,0 +1,133 @@
+<script>
+    console.log('[LOAD] Scripts_Core OK');
+    // ─────────────────────────────────────────────────────────────────────────────
+    // STORAGE WRAPPER — localStorage no funciona en sandbox de Apps Script
+    // ─────────────────────────────────────────────────────────────────────────────
+    const _memStore = {};
+    const safeStorage = {
+        getItem(k) { try { const v = localStorage.getItem(k); console.log('[DEBUG] localStorage.getItem OK'); return v; } catch (e) { console.warn('[DEBUG] localStorage blocked, using memory:', e.message); return _memStore[k] || null; } },
+        setItem(k, v) { try { localStorage.setItem(k, v); } catch (e) { _memStore[k] = v; } },
+        removeItem(k) { try { localStorage.removeItem(k); } catch (e) { delete _memStore[k]; } }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONFIGURACIÓN
+    // ─────────────────────────────────────────────────────────────────────────────
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzB5w2Q0VjRk-0DB_B4uuEcm7r07qT932WVwQ8YBCOhsX_ilo5UD4FIob165h9KnJC8VQ/exec';
+    const PASSWORD_GENERICA = "Indipris123";
+    const WHATSAPP_API = "ECT3AZGzvpT3"; // fallback, se sobreescribe con config del backend
+    const APP_BASE_URL = SCRIPT_URL;
+
+    // Configuración dinámica de WhatsApp (se carga desde backend)
+    let waConfig = { apiKey: '', templates: {} };
+    let waConfigLoaded = false;
+
+    const Toast = Swal.mixin({
+        customClass: {
+            confirmButton: 'bg-indipris-main text-white px-6 py-3 rounded-xl font-black shadow-lg shadow-pink-200 active:scale-95 transition uppercase tracking-widest text-xs mx-2',
+            cancelButton: 'bg-slate-100 text-slate-500 px-6 py-3 rounded-xl font-black shadow-sm active:scale-95 transition uppercase tracking-widest text-xs mx-2 hover:bg-slate-200',
+            popup: 'rounded-[2rem] card-shadow border-0',
+            input: 'box-border w-[90%] mx-auto rounded-2xl border-2 border-slate-100 p-4 font-bold text-slate-700 outline-none focus:border-indipris-main text-center mt-4'
+        },
+        buttonsStyling: false
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ESTADO GLOBAL
+    // ─────────────────────────────────────────────────────────────────────────────
+    let session = null;
+    let localData = {
+        dashboard: [],
+        serviciosResumen: [],
+        finanzas: [],
+        ticketEnFoco: null,
+        companies: []   // { id, nombre, categoria }[]
+    };
+    let arrServices = [];
+    let arrPassengers = [];
+    let currentOpcionesPorServicio = {};
+    let seleccionesAdmin = {};
+    let idTicketEnFoco = "";
+    let otpUserEnFoco = "";   // Guardamos el usuario para el que se verificó el OTP
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // API — LLAMADA CENTRAL
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function apiCall(action, extraPayload = {}) {
+        try {
+            const authPayload = session ? { u: session.name, h: session.hash } : null;
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                redirect: 'follow',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action, auth: authPayload, ...extraPayload })
+            });
+            const json = await res.json();
+            if (json.message === "Sesión inválida o expirada. Por favor, inicia sesión de nuevo.") cerrarSesion();
+            return json;
+        } catch (e) {
+            return { status: "error", message: "Fallo de conexión." };
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // UTILIDADES
+    // ─────────────────────────────────────────────────────────────────────────────
+    const showLoading = (txt) => {
+        document.getElementById('loading-text').innerText = txt;
+        document.getElementById('loading-overlay').classList.remove('hidden', 'opacity-0');
+    };
+    const hideLoading = () => {
+        console.log('[DEBUG] hideLoading called');
+        const el = document.getElementById('loading-overlay');
+        if (!el) { console.error('[DEBUG] loading-overlay NOT FOUND!'); return; }
+        el.classList.add('opacity-0');
+        setTimeout(() => el.classList.add('hidden'), 300);
+    };
+
+    function parseDateObj(val) {
+        if (!val) return new Date();
+        let str = String(val).split(' ')[0];
+        let parts = str.split('/');
+        if (parts.length === 3) {
+            let p0 = parseInt(parts[0], 10), p1 = parseInt(parts[1], 10) - 1, p2 = parseInt(parts[2], 10);
+            if (p2 < 100) p2 += 2000;
+            if (p0 > 31) return new Date(p0, p1, p2);
+            return new Date(p2, p1, p0);
+        }
+        return new Date(val);
+    }
+
+    function formatToDateInput(dateStr) {
+        if (!dateStr) return '';
+        const parts = dateStr.split('/');
+        if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        try { const d = new Date(dateStr); if (!isNaN(d)) return d.toISOString().split('T')[0]; } catch (e) { }
+        return dateStr;
+    }
+
+    // Formato legible: "10 - julio - 2002"
+    const _MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    function formatDateHuman(dateStr) {
+        if (!dateStr) return '—';
+        const iso = formatToDateInput(dateStr);
+        if (!iso) return '—';
+        const [y, m, d] = iso.split('-').map(Number);
+        if (!y || !m || !d) return iso;
+        return `${d} - ${_MESES_ES[m - 1]} - ${y}`;
+    }
+
+    function formatCurrency(n) {
+        return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n);
+    }
+
+    async function hashPassword(p) {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DEEP LINK
+    // ─────────────────────────────────────────────────────────────────────────────
+    let deepLinkTicket = null;
+</script>

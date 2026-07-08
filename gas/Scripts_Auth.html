@@ -1,0 +1,206 @@
+<script>
+    console.log('[LOAD] Scripts_Auth OK');
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('ticket')) deepLinkTicket = urlParams.get('ticket');
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // INIT
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.onload = async () => {
+        console.log('[DEBUG] window.onload fired');
+        // Timeout de seguridad: si en 15s nada responde, mostrar login
+        const safetyTimer = setTimeout(() => {
+            console.log('[DEBUG] Safety timer triggered (15s)');
+            hideLoading();
+            document.getElementById('login-view').classList.remove('hidden');
+        }, 15000);
+
+        try {
+            console.log('[DEBUG] Attempting safeStorage.getItem...');
+            const saved = safeStorage.getItem('indipris_session_secure');
+            console.log('[DEBUG] safeStorage result:', saved ? 'HAS SESSION' : 'NO SESSION');
+            if (saved) {
+                session = JSON.parse(saved);
+                console.log('[DEBUG] Parsed session, calling initAppData...');
+                await initAppData();
+            } else {
+                console.log('[DEBUG] No session, showing login...');
+                hideLoading();
+                document.getElementById('login-view').classList.remove('hidden');
+                console.log('[DEBUG] Login view should be visible now');
+            }
+        } catch (e) {
+            console.error('[DEBUG] Error in onload:', e);
+            hideLoading();
+            document.getElementById('login-view').classList.remove('hidden');
+        } finally {
+            clearTimeout(safetyTimer);
+            console.log('[DEBUG] onload complete');
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AUTH — LOGIN
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.checkLogin = async () => {
+        const u = document.getElementById('login-user').value.trim();
+        const p = document.getElementById('login-pass').value.trim();
+        if (!u || !p) return;
+
+        const btn = document.getElementById('btn-login-submit');
+        btn.innerText = "VERIFICANDO..."; btn.disabled = true;
+
+        const hash = await hashPassword(p);
+        const res = await apiCall('login', { u, h: hash });
+
+        if (res.status === "success") {
+            session = {
+                name: res.data.username || res.data.name,
+                role: res.data.role,
+                empresaId: res.data.empresa || '',              // CSV de IDs
+                empresaIds: res.data.empresaIds || [],            // array de IDs
+                empresa: res.data.empresaNombre || res.data.empresa || '',  // nombre legible
+                email: res.data.email,
+                phone: res.data.telefono,
+                hash: res.data.hash
+            };
+            safeStorage.setItem('indipris_session_secure', JSON.stringify(session));
+            document.getElementById('login-view').classList.add('hidden');
+
+            if (p === PASSWORD_GENERICA) {
+                document.getElementById('force-reset-view').classList.remove('hidden');
+                hideLoading();
+            } else {
+                showLoading("Cargando tu panel...");
+                await initAppData();
+            }
+        } else {
+            document.getElementById('login-error').classList.remove('hidden');
+            btn.innerText = "Entrar al Sistema"; btn.disabled = false;
+        }
+    };
+
+    window.cerrarSesion = () => {
+        safeStorage.removeItem('indipris_session_secure');
+        session = null;
+        // Ocultar todo y mostrar login
+        document.getElementById('dashboard-view').classList.add('hidden');
+        document.getElementById('app-view').classList.add('hidden');
+        document.getElementById('success-view').classList.add('hidden');
+        document.getElementById('force-reset-view').classList.add('hidden');
+        // Cerrar cualquier modal abierto
+        document.querySelectorAll('.fixed').forEach(el => {
+            if (el.id && el.id.startsWith('modal')) el.classList.add('hidden');
+        });
+        // Mostrar login limpio
+        document.getElementById('loading-overlay').classList.add('hidden');
+        document.getElementById('login-view').classList.remove('hidden');
+        document.getElementById('login-user').value = '';
+        document.getElementById('login-pass').value = '';
+        document.getElementById('login-error').classList.add('hidden');
+        const btn = document.getElementById('btn-login-submit');
+        if (btn) { btn.innerText = 'Entrar al Sistema'; btn.disabled = false; }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AUTH — OTP (CORREGIDO: flujo completo server-side, código nunca sale del servidor)
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.toggleOTPView = (show) => {
+        document.getElementById('form-login').classList.toggle('hidden', show);
+        document.getElementById('form-otp').classList.toggle('hidden', !show);
+        // Resetear pasos
+        document.getElementById('otp-step-1').classList.remove('hidden');
+        document.getElementById('otp-step-2').classList.add('hidden');
+        document.getElementById('otp-step-3').classList.add('hidden');
+        otpUserEnFoco = "";
+    };
+
+    window.requestOTP = async () => {
+        const usuario = document.getElementById('otp-user').value.trim();
+        const telefono = document.getElementById('otp-phone').value.trim();
+        if (!usuario || !telefono) return Toast.fire({ text: "Ingresa tu usuario y número.", icon: "warning" });
+
+        const btn = document.getElementById('btn-send-otp');
+        btn.disabled = true; btn.innerText = "ENVIANDO...";
+
+        // El servidor genera, guarda y envía el OTP. Nunca lo devuelve al cliente.
+        const res = await apiCall('requestOTP', { usuario, telefono });
+
+        btn.disabled = false; btn.innerText = "Enviar Código por WhatsApp";
+
+        if (res.status === "success") {
+            otpUserEnFoco = usuario;
+            document.getElementById('otp-step-1').classList.add('hidden');
+            document.getElementById('otp-step-2').classList.remove('hidden');
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+    };
+
+    window.verifyOTP = async () => {
+        const codigo = document.getElementById('otp-code').value.trim();
+        if (!codigo || codigo.length !== 6) return Toast.fire({ text: "Ingresa el código de 6 dígitos.", icon: "warning" });
+
+        // El servidor verifica el código — el frontend NUNCA lo sabe de antemano
+        const res = await apiCall('verifyOTP', { usuario: otpUserEnFoco, otp: codigo });
+
+        if (res.status === "success") {
+            document.getElementById('otp-step-2').classList.add('hidden');
+            document.getElementById('otp-step-3').classList.remove('hidden');
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+    };
+
+    window.saveResetPassword = async () => {
+        const newPass = document.getElementById('otp-new-pass').value.trim();
+        const confPass = document.getElementById('otp-confirm-pass').value.trim();
+        if (!newPass || newPass !== confPass) return Toast.fire({ text: "Las contraseñas no coinciden.", icon: "warning" });
+        if (newPass === PASSWORD_GENERICA) return Toast.fire({ text: "Debes elegir una contraseña distinta a la genérica.", icon: "warning" });
+
+        const btn = document.getElementById('btn-save-reset');
+        btn.disabled = true; btn.innerText = "GUARDANDO...";
+
+        const hash = await hashPassword(newPass);
+        const res = await apiCall('resetPassword', { usuario: otpUserEnFoco, newPassHash: hash });
+
+        btn.disabled = false; btn.innerText = "GUARDAR CONTRASEÑA";
+
+        if (res.status === "success") {
+            Toast.fire({ text: "¡Contraseña actualizada! Ya puedes iniciar sesión.", icon: "success" });
+            toggleOTPView(false);
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AUTH — FORZAR CAMBIO DE CONTRASEÑA
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.saveForcePassword = async () => {
+        const np = document.getElementById('force-new-pass').value.trim();
+        const cp = document.getElementById('force-confirm-pass').value.trim();
+        if (!np || np !== cp) return Toast.fire({ text: "Las contraseñas no coinciden.", icon: "warning" });
+        if (np === PASSWORD_GENERICA) return Toast.fire({ text: "Elige una contraseña diferente a la genérica.", icon: "warning" });
+
+        const btn = document.getElementById('btn-force-save');
+        btn.disabled = true; btn.innerText = "GUARDANDO...";
+
+        const hash = await hashPassword(np);
+        const res = await apiCall('resetPassword', { usuario: session.name, newPassHash: hash });
+
+        if (res.status === "success") {
+            session.hash = hash;
+            safeStorage.setItem('indipris_session_secure', JSON.stringify(session));
+            document.getElementById('force-reset-view').classList.add('hidden');
+            showLoading("Cargando tu panel...");
+            await initAppData();
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+            btn.disabled = false; btn.innerText = "GUARDAR Y ENTRAR";
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // INIT APP
+</script>
