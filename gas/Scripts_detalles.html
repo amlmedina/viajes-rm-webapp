@@ -736,10 +736,13 @@
                         var ivaSingle = _aplicaIVA ? subSingle * 0.16 : 0;
                         var totSingle = subSingle + ivaSingle;
 
+                        const activeCheck = isAprobado ? 'flex shadow-md' : 'hidden check-icon';
+                        const checkBg = isAprobado ? 'bg-emerald-500' : 'bg-pink-600';
+
                         html += '<div id="card-' + o[1] + '" class="border ' + cardBorder + ' rounded-lg relative transition opt-card flex flex-col md:flex-row" ' + (isSelectable ? 'onclick="selectAdminOption(\'' + svcId + '\',\'' + o[1] + '\')"' : '') + '>';
-                        html += '<div class="hidden check-icon absolute top-1.5 left-1.5 w-5 h-5 bg-pink-600 text-white rounded-full flex items-center justify-center text-[9px] font-black z-10">✓</div>';
+                        html += '<div class="' + activeCheck + ' absolute -top-2 -left-2 w-6 h-6 ' + checkBg + ' text-white rounded-full items-center justify-center text-[10px] font-black z-10">✓</div>';
                         // Left: flight info
-                        html += '<div class="flex-1 px-2.5 py-1.5">';
+                        html += '<div class="flex-1 px-2.5 py-1.5 pl-5">'; // Added pl-5 to avoid overlap with check icon
                         if (p.tramo) html += '<span class="text-[7px] font-black ' + (p.tramo === 'IDA' ? 'text-emerald-600' : 'text-indigo-600') + '">' + (p.tramo === 'IDA' ? '→ IDA' : '← REG') + '</span> ';
                         html += '<span class="text-[11px] font-black text-slate-800">' + (p.aerolinea || o[2].replace(/<[^>]+>/g, ' ').substring(0, 30)) + '</span>';
                         if (p.vuelo) html += ' <span class="text-slate-400 font-mono text-[9px]">' + p.vuelo + '</span>';

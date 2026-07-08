@@ -413,30 +413,46 @@
         document.getElementById('modal-opt').classList.remove('hidden');
     };
 
-    window.addOpcionSlot = (svcId) => {
-        const existing = currentOpcionesPorServicio[svcId];
-        if (!existing) return;
+    window.addOpcionSlot = (svcId, addPair = false) => {
+        if (addPair) {
+            _addSlot(svcId + '_IDA', false);
+            const regId = _addSlot(svcId + '_REG', false);
+            renderOptModal();
+            setTimeout(() => {
+                const el = document.getElementById('opt-slot-' + regId);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+            return;
+        }
+        const newId = _addSlot(svcId, false);
+        renderOptModal();
+        setTimeout(() => {
+            const el = document.getElementById('opt-slot-' + newId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    };
+
+    function _addSlot(targetSvcId, doRender = false) {
+        const existing = currentOpcionesPorServicio[targetSvcId];
+        if (!existing) return null;
         const tipo = existing[0]?.tipo || 'BUS';
         const tramo = existing[0]?._tramo || null;
         const parentId = existing[0]?._parentSvcId || null;
         const nPax = (localData.ticketEnFoco.pasajeros || []).length || 1;
         const feeInicial = String(300 * nPax);
-        if (existing.length >= 3) { Toast.fire({ text: "Máximo 3 opciones por servicio.", icon: "info" }); return; }
+        if (existing.length >= 3) { Toast.fire({ text: "Máximo 3 opciones por tramo.", icon: "info" }); return null; }
+        
+        const newOptId = Date.now() + Math.random();
         existing.push({
-            id: Date.now() + Math.random(), tipo,
+            id: newOptId, tipo,
             desc: '', costo: '', fee: feeInicial, img: '', costoProveedor: '', isUploadingImg: false,
             v_fecha: existing[0]?.v_fecha || '', v_origen: existing[0]?.v_origen || '', v_destino: existing[0]?.v_destino || '',
             v_hSalida: '', v_hLlegada: '', v_num: '', v_pnr: '', v_aerolinea: '',
             h_nombre: existing[0]?.h_nombre || '', h_dir: existing[0]?.h_dir || '', h_desayuno: 'Desayuno Incluido',
             _parentSvcId: parentId, _tramo: tramo
         });
-        const newOptId = existing[existing.length - 1].id;
-        renderOptModal();
-        setTimeout(() => {
-            const el = document.getElementById('opt-slot-' + newOptId);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
-    };
+        return newOptId;
+    }
 
     window.removeOpcionSlot = (svcId, optId) => {
         currentOpcionesPorServicio[svcId] = currentOpcionesPorServicio[svcId].filter(o => o.id !== optId);
@@ -516,13 +532,16 @@
 
                 html += `<div class="mb-8 border-2 border-blue-200 rounded-2xl p-4 md:p-6 bg-white shadow-sm">
         <h4 class="text-[10px] md:text-xs font-black text-blue-700 uppercase tracking-widest mb-1 pb-2"> ${baseLabel} - Vuelo Redondo</h4>
-        <p class="text-[9px] text-slate-400 font-bold mb-4">Carga opciones de ida y regreso de forma independiente.</p>
+        <p class="text-[9px] text-slate-400 font-bold mb-4 flex justify-between items-center">
+            <span>Carga opciones de ida y regreso.</span>
+            <button onclick="addOpcionSlot('${svcId}', true)" class="text-[9px] font-black text-white bg-blue-600 px-3 py-1.5 rounded-full hover:bg-blue-700 transition shadow-sm">+ AÑADIR PAR (IDA + REGRESO)</button>
+        </p>
 
         <!-- IDA -->
-        <div class="mb-6 border border-emerald-200 rounded-xl p-4 bg-emerald-50/30">
+        <div class="mb-6 border border-emerald-200 rounded-xl p-4 bg-emerald-50/30 relative">
           <div class="flex items-center justify-between mb-3">
             <span class="text-[9px] font-black text-emerald-700 uppercase tracking-widest bg-emerald-100 px-3 py-1 rounded-full">-> IDA: ${s[2]} -> ${s[3]}</span>
-            <button onclick="addOpcionSlot('${svcIda}')" class="text-[9px] font-black text-emerald-600 bg-white border border-emerald-200 px-3 py-1 rounded-full hover:bg-emerald-50 transition shadow-sm">+ Opcion</button>
+            <button onclick="addOpcionSlot('${svcIda}')" class="text-[8px] font-black text-emerald-600 bg-white border border-emerald-200 px-2 py-1 rounded-full hover:bg-emerald-50 transition shadow-sm">+ Solo Ida</button>
           </div>
           <div class="space-y-4">
             ${optsIda.map((o, i) => buildOpcionHTML(svcIda, o, i, optsIda.length)).join('')}
@@ -530,10 +549,10 @@
         </div>
 
         <!-- REGRESO -->
-        <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50/30">
+        <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50/30 relative">
           <div class="flex items-center justify-between mb-3">
             <span class="text-[9px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-100 px-3 py-1 rounded-full"><- REGRESO: ${s[3]} -> ${s[2]}</span>
-            <button onclick="addOpcionSlot('${svcReg}')" class="text-[9px] font-black text-indigo-600 bg-white border border-indigo-200 px-3 py-1 rounded-full hover:bg-indigo-50 transition shadow-sm">+ Opcion</button>
+            <button onclick="addOpcionSlot('${svcReg}')" class="text-[8px] font-black text-indigo-600 bg-white border border-indigo-200 px-2 py-1 rounded-full hover:bg-indigo-50 transition shadow-sm">+ Solo Regreso</button>
           </div>
           <div class="space-y-4">
             ${optsReg.map((o, i) => buildOpcionHTML(svcReg, o, i, optsReg.length)).join('')}
