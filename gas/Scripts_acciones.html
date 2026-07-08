@@ -293,30 +293,43 @@
         }
     };
 
+    window.changeTipo = (rowIdx, value) => {
+        if (excelParsedData[rowIdx]) {
+            excelParsedData[rowIdx]['Tipo'] = value;
+            renderExcelPreview(excelParsedData);
+        }
+    };
+
     function renderExcelPreview(data) {
         const tbody = document.getElementById('excel-preview-body');
         tbody.innerHTML = data.map((row, idx) => {
             const esRedondo = String(row['Tipo'] || '').trim().toLowerCase() === 'redondo';
-            const tipoBadge = esRedondo
-                ? `<span class="bg-indigo-100 text-indigo-700 font-black text-[9px] px-2 py-0.5 rounded-full">↔ REDONDO</span>`
-                : `<span class="bg-emerald-100 text-emerald-700 font-black text-[9px] px-2 py-0.5 rounded-full">→ SENCILLO</span>`;
+            const tipoSelect = `
+                <select onchange="changeTipo(${idx}, this.value)"
+                    class="text-[10px] font-black rounded-lg px-2 py-1 border-2 cursor-pointer transition outline-none
+                    ${esRedondo
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-300 hover:border-indigo-500'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:border-emerald-500'}">
+                    <option value="Sencillo" ${!esRedondo ? 'selected' : ''}>&#8594; Sencillo</option>
+                    <option value="Redondo" ${esRedondo ? 'selected' : ''}>&#8596; Redondo</option>
+                </select>`;
             return `
-                <tr class="hover:bg-slate-50 ${esRedondo ? 'border-l-2 border-l-indigo-300' : ''} ">
+                <tr class="hover:bg-slate-50 ${esRedondo ? 'border-l-4 border-l-indigo-400 bg-indigo-50/30' : ''}">
                   <td class="px-3 py-2 text-slate-400 font-bold">${idx + 1}</td>
                   <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Nombres', this.innerText)">${row['Nombres'] || ''}</td>
                   <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Apellido Paterno', this.innerText)">${row['Apellido Paterno'] || ''}</td>
                   <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha de nacimiento', this.innerText)">${row['Fecha de nacimiento'] || ''}</td>
-                  <td class="px-3 py-2">${tipoBadge}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerolínea Ida', this.innerText)">${row['Aerolínea Ida'] || ''}</td>
+                  <td class="px-3 py-2">${tipoSelect}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerol\u00ednea Ida', this.innerText)">${row['Aerol\u00ednea Ida'] || ''}</td>
                   <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Origen Ida', this.innerText)">${row['Origen Ida'] || ''}</td>
                   <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Destino Ida', this.innerText)">${row['Destino Ida'] || ''}</td>
                   <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Ida', this.innerText)">${row['Fecha Salida Ida'] || ''}</td>
                   <td class="px-3 py-2 text-slate-600 font-mono font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Ida', this.innerText)">${row['PNR Ida'] || ''}</td>
                   ${esRedondo ? `
-                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerolínea Regreso', this.innerText)">${row['Aerolínea Regreso'] || ''}</td>
-                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Regreso', this.innerText)">${row['Fecha Salida Regreso'] || ''}</td>
-                  <td class="px-3 py-2 text-indigo-600 font-mono font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Regreso', this.innerText)">${row['PNR Regreso'] || ''}</td>
-                  ` : '<td colspan="3" class="px-3 py-2 text-slate-300 text-center text-[9px]">— Sencillo —</td>'}
+                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-indigo-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerol\u00ednea Regreso', this.innerText)">${row['Aerol\u00ednea Regreso'] || ''}</td>
+                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-indigo-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Regreso', this.innerText)">${row['Fecha Salida Regreso'] || ''}</td>
+                  <td class="px-3 py-2 text-indigo-600 font-mono font-bold outline-none focus:bg-indigo-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Regreso', this.innerText)">${row['PNR Regreso'] || ''}</td>
+                  ` : '<td colspan="3" class="px-3 py-2 text-slate-200 text-center text-[9px] italic">&#8212; solo ida &#8212;</td>'}
                 </tr>
             `;
         }).join('');
