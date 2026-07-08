@@ -25,6 +25,7 @@ export async function GET() {
   for (const mod of modules) {
     // Check possible filenames
     const possibleNames = [`${mod}.html`];
+    if (mod === 'Scripts_auth') possibleNames.push('Scripts_Auth.html');
     if (mod === 'Scripts_dashboard') possibleNames.push('Scripts_dashboards.html');
     if (mod === 'Scripts_init') possibleNames.push('Scipts_init.html');
     
