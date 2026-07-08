@@ -62,11 +62,11 @@
             if (nuevoFee === undefined || nuevoFee === null) return;
             ajustes.push({ idOpcion: op[1], nuevoCosto: Number(nuevoCosto), nuevoFee: Number(nuevoFee), nuevoTotal: (Number(nuevoCosto) + Number(nuevoFee)) * 1.16 });
         }
-        const { isConfirmed } = await Toast.fire({ title: '¿Aplicar ajustes?', text: "El ticket regresará a COTIZADO.", icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, aplicar' });
+        const { isConfirmed } = await Toast.fire({ title: '¿Aplicar ajustes?', text: "Se actualizará la tarifa de esta opción.", icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, aplicar' });
         if (!isConfirmed) return;
         closeModal('modal-detalles'); showLoading("Ajustando...");
         const res = await apiCall('ajustarPrecio', { idTicket: idTicketEnFoco, ajustes });
-        if (res.status === "success") { sendAppNotifications("COTIZADO", idTicketEnFoco).catch(() => { }); await refreshDashboardSilencioso(); }
+        if (res.status === "success") { await refreshDashboardSilencioso(); }
         else Toast.fire({ text: res.message, icon: "error" });
         hideLoading();
     };

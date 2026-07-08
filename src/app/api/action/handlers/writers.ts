@@ -322,20 +322,13 @@ export async function handleAjustarPrecio(authParams: any, data: any) {
           await updateCell('Opciones_Cotizacion', i + 2, 4, ajuste.nuevoCosto);
           await updateCell('Opciones_Cotizacion', i + 2, 5, ajuste.nuevoFee);
           await updateCell('Opciones_Cotizacion', i + 2, 6, ajuste.nuevoTotal);
-          await updateCell('Opciones_Cotizacion', i + 2, 7, 'Pendiente');
+          // Removed status reset to 'Pendiente' to maintain 'Autorizada'
           break;
         }
       }
     }
 
-    // Reset ticket to Cotizado
-    const solicitudes = await getSheetData('Solicitudes');
-    for (let i = 0; i < solicitudes.length; i++) {
-      if (String(solicitudes[i][0]) === String(idTicket)) {
-        await updateCell('Solicitudes', i + 2, 5, 'Cotizado');
-        break;
-      }
-    }
+    // Removed ticket status reset to 'Cotizado'
 
     await registrarLog(userAuth.name, idTicket, 'Ajustó precios');
     return { status: 'success', data: { idTicket } };
