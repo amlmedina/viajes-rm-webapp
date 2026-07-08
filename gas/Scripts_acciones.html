@@ -287,9 +287,74 @@
         reader.readAsArrayBuffer(file);
     };
 
+    // ── Validation helpers ────────────────────────────────────────────────────
+    const RX_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+    const RX_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+    // Try to normalize a date string to YYYY-MM-DD
+    function normalizeDate(val) {
+        if (!val) return '';
+        const s = String(val).trim();
+        if (RX_DATE.test(s)) return s; // already correct
+        // Excel serial number
+        if (/^\d{5}$/.test(s)) {
+            const d = new Date(Math.round((Number(s) - 25569) * 86400 * 1000));
+            return d.toISOString().slice(0, 10);
+        }
+        // DD/MM/YYYY or DD-MM-YYYY
+        const m1 = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+        if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+        // MM/DD/YYYY
+        const m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+        return s; // leave as-is, will fail validation
+    }
+
+    // Try to normalize a time string to HH:MM
+    function normalizeTime(val) {
+        if (!val) return '';
+        const s = String(val).trim();
+        if (RX_TIME.test(s)) return s;
+        // H:MM or HH:MM:SS
+        const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+        if (m) return `${m[1].padStart(2,'0')}:${m[2]}`;
+        return s;
+    }
+
+    function validateRow(row) {
+        const esRedondo = String(row['Tipo'] || '').trim().toLowerCase() === 'redondo';
+        const errors = {};
+        if (!String(row['Nombres'] || '').trim())          errors['Nombres'] = 'Requerido';
+        if (!String(row['Apellido Paterno'] || '').trim()) errors['Apellido Paterno'] = 'Requerido';
+        if (!String(row['Origen Ida'] || '').trim())       errors['Origen Ida'] = 'Requerido';
+        if (!String(row['Destino Ida'] || '').trim())      errors['Destino Ida'] = 'Requerido';
+        // Date validation
+        const fchIda = normalizeDate(row['Fecha Salida Ida']);
+        if (!RX_DATE.test(fchIda))  errors['Fecha Salida Ida'] = 'Formato AAAA-MM-DD';
+        // Time validation (optional but must be HH:MM if provided)
+        const hSal = normalizeTime(row['Hora Salida Ida']);
+        if (hSal && !RX_TIME.test(hSal)) errors['Hora Salida Ida'] = 'Formato HH:MM';
+        const hLlg = normalizeTime(row['Hora Llegada Ida']);
+        if (hLlg && !RX_TIME.test(hLlg)) errors['Hora Llegada Ida'] = 'Formato HH:MM';
+        if (esRedondo) {
+            const fchReg = normalizeDate(row['Fecha Salida Regreso']);
+            if (!RX_DATE.test(fchReg)) errors['Fecha Salida Regreso'] = 'Formato AAAA-MM-DD';
+            const hSalR = normalizeTime(row['Hora Salida Regreso']);
+            if (hSalR && !RX_TIME.test(hSalR)) errors['Hora Salida Regreso'] = 'Formato HH:MM';
+            const hLlgR = normalizeTime(row['Hora Llegada Regreso']);
+            if (hLlgR && !RX_TIME.test(hLlgR)) errors['Hora Llegada Regreso'] = 'Formato HH:MM';
+        }
+        return errors;
+    }
+
     window.updateExcelCell = (rowIdx, field, value) => {
         if (excelParsedData[rowIdx]) {
-            excelParsedData[rowIdx][field] = value.trim();
+            // Auto-normalize on edit
+            let v = value.trim();
+            if (['Fecha Salida Ida','Fecha Salida Regreso','Fecha de nacimiento'].includes(field)) v = normalizeDate(v);
+            if (['Hora Salida Ida','Hora Llegada Ida','Hora Salida Regreso','Hora Llegada Regreso'].includes(field)) v = normalizeTime(v);
+            excelParsedData[rowIdx][field] = v;
+            renderExcelPreview(excelParsedData);
         }
     };
 
@@ -302,8 +367,13 @@
 
     function renderExcelPreview(data) {
         const tbody = document.getElementById('excel-preview-body');
+        let totalErrors = 0;
         tbody.innerHTML = data.map((row, idx) => {
             const esRedondo = String(row['Tipo'] || '').trim().toLowerCase() === 'redondo';
+            const errs = validateRow(row);
+            const hasErr = Object.keys(errs).length > 0;
+            if (hasErr) totalErrors++;
+
             const tipoSelect = `
                 <select onchange="changeTipo(${idx}, this.value)"
                     class="text-[10px] font-black rounded-lg px-2 py-1 border-2 cursor-pointer transition outline-none
@@ -313,22 +383,38 @@
                     <option value="Sencillo" ${!esRedondo ? 'selected' : ''}>&#8594; Sencillo</option>
                     <option value="Redondo" ${esRedondo ? 'selected' : ''}>&#8596; Redondo</option>
                 </select>`;
+
+            const cell = (field, extraClass='', editable=true) => {
+                const val = String(row[field] || '');
+                const hasFieldErr = !!errs[field];
+                const errTip = hasFieldErr ? ` title="${errs[field]}"` : '';
+                const errClass = hasFieldErr ? 'bg-red-50 border border-red-400 text-red-700' : (extraClass || 'text-slate-600');
+                const tag = editable ? 'td' : 'td';
+                return `<td class="px-2 py-2 outline-none focus:bg-yellow-50 ${errClass}"${errTip} contenteditable="${editable}" onblur="updateExcelCell(${idx}, '${field}', this.innerText)">${val}${hasFieldErr ? ' <span class="text-[9px] text-red-500 font-black">⚠</span>' : ''}</td>`;
+            };
+
+            const rowBg = hasErr
+                ? 'bg-red-50/40 border-l-4 border-l-red-400'
+                : esRedondo ? 'border-l-4 border-l-indigo-400 bg-indigo-50/30' : '';
+
             return `
-                <tr class="hover:bg-slate-50 ${esRedondo ? 'border-l-4 border-l-indigo-400 bg-indigo-50/30' : ''}">
-                  <td class="px-3 py-2 text-slate-400 font-bold">${idx + 1}</td>
-                  <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Nombres', this.innerText)">${row['Nombres'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Apellido Paterno', this.innerText)">${row['Apellido Paterno'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha de nacimiento', this.innerText)">${row['Fecha de nacimiento'] || ''}</td>
-                  <td class="px-3 py-2">${tipoSelect}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerol\u00ednea Ida', this.innerText)">${row['Aerol\u00ednea Ida'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Origen Ida', this.innerText)">${row['Origen Ida'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Destino Ida', this.innerText)">${row['Destino Ida'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Ida', this.innerText)">${row['Fecha Salida Ida'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 font-mono font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Ida', this.innerText)">${row['PNR Ida'] || ''}</td>
+                <tr class="hover:bg-slate-50 ${rowBg}">
+                  <td class="px-3 py-2 text-slate-400 font-bold text-center">
+                    ${hasErr ? '<span class="text-red-500 font-black text-xs">⚠</span>' : idx + 1}
+                  </td>
+                  ${cell('Nombres', 'font-bold text-slate-800')}
+                  ${cell('Apellido Paterno', 'font-bold text-slate-800')}
+                  ${cell('Fecha de nacimiento')}
+                  <td class="px-2 py-2">${tipoSelect}</td>
+                  ${cell('Aerolínea Ida')}
+                  ${cell('Origen Ida')}
+                  ${cell('Destino Ida')}
+                  ${cell('Fecha Salida Ida')}
+                  ${cell('PNR Ida', 'font-mono font-bold')}
                   ${esRedondo ? `
-                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-indigo-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerol\u00ednea Regreso', this.innerText)">${row['Aerol\u00ednea Regreso'] || ''}</td>
-                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-indigo-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Regreso', this.innerText)">${row['Fecha Salida Regreso'] || ''}</td>
-                  <td class="px-3 py-2 text-indigo-600 font-mono font-bold outline-none focus:bg-indigo-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Regreso', this.innerText)">${row['PNR Regreso'] || ''}</td>
+                  ${cell('Aerolínea Regreso', 'text-indigo-600')}
+                  ${cell('Fecha Salida Regreso', 'text-indigo-600')}
+                  ${cell('PNR Regreso', 'text-indigo-600 font-mono font-bold')}
                   ` : '<td colspan="3" class="px-3 py-2 text-slate-200 text-center text-[9px] italic">&#8212; solo ida &#8212;</td>'}
                 </tr>
             `;
