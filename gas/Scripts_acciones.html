@@ -237,18 +237,30 @@
 
     window.downloadExcelTemplate = () => {
         const headers = [
-            'ID Vuelo', 'Nombres', 'Apellido Paterno', 'Apellido Materno', 'Fecha de nacimiento', 
-            'Numero de viajero frecuente', 'Tarifa', 'Tipo de asiento', 'Equipaje', 'Aerolínea', 
-            'Número Vuelo', 'Origen', 'Destino', 'Fecha Salida', 'Hora Salida (Local)', 
-            'Fecha Llegada', 'Hora Llegada (Local)', 'Código Reserva (PNR)', 'Estatus'
+            'Nombres', 'Apellido Paterno', 'Apellido Materno', 'Fecha de nacimiento',
+            'Numero de viajero frecuente', 'Tipo de asiento', 'Equipaje',
+            'Tipo',
+            'Aerolínea Ida', 'Número Vuelo Ida', 'Origen Ida', 'Destino Ida', 'Fecha Salida Ida', 'Hora Salida Ida', 'Hora Llegada Ida', 'PNR Ida', 'Tarifa Ida',
+            'Aerolínea Regreso', 'Número Vuelo Regreso', 'Fecha Salida Regreso', 'Hora Salida Regreso', 'Hora Llegada Regreso', 'PNR Regreso', 'Tarifa Regreso'
         ];
-        const data = [
-            headers,
-            ["", "Juan", "Pérez", "Gómez", "1990-05-20", "AM12345", "", "Pasillo", "Solo Artículo Personal", "Aeroméxico", "AM123", "CDMX", "Cancún", "2025-10-15", "08:00", "2025-10-15", "10:15", "ABCDEF", "Pendiente"]
+        const exIda = [
+            "Juan", "Pérez", "Gómez", "1990-05-20", "AM12345", "Pasillo", "Solo Artículo Personal",
+            "Sencillo",
+            "Aeroméxico", "AM123", "CDMX", "Cancún", "2025-10-15", "08:00", "10:15", "ABCDEF", "",
+            "", "", "", "", "", "", ""
         ];
+        const exRedondo = [
+            "María", "López", "Ruiz", "1985-03-12", "", "Ventana", "Maleta 23kg",
+            "Redondo",
+            "Aeroméxico", "AM456", "MTY", "CDMX", "2025-11-01", "07:00", "08:30", "XYZ123", "",
+            "Aeroméxico", "AM789", "2025-11-05", "18:00", "19:30", "XYZ456", ""
+        ];
+        const data = [headers, exIda, exRedondo];
         
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet(data);
+        // Freeze header row
+        ws['!freeze'] = { xSplit: 0, ySplit: 1 };
         XLSX.utils.book_append_sheet(wb, ws, "Vuelos");
         XLSX.writeFile(wb, "plantilla_vuelos.xlsx");
     };
@@ -284,20 +296,27 @@
     function renderExcelPreview(data) {
         const tbody = document.getElementById('excel-preview-body');
         tbody.innerHTML = data.map((row, idx) => {
+            const esRedondo = String(row['Tipo'] || '').trim().toLowerCase() === 'redondo';
+            const tipoBadge = esRedondo
+                ? `<span class="bg-indigo-100 text-indigo-700 font-black text-[9px] px-2 py-0.5 rounded-full">↔ REDONDO</span>`
+                : `<span class="bg-emerald-100 text-emerald-700 font-black text-[9px] px-2 py-0.5 rounded-full">→ SENCILLO</span>`;
             return `
-                <tr class="hover:bg-slate-50">
+                <tr class="hover:bg-slate-50 ${esRedondo ? 'border-l-2 border-l-indigo-300' : ''} ">
                   <td class="px-3 py-2 text-slate-400 font-bold">${idx + 1}</td>
                   <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Nombres', this.innerText)">${row['Nombres'] || ''}</td>
                   <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Apellido Paterno', this.innerText)">${row['Apellido Paterno'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-800 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Apellido Materno', this.innerText)">${row['Apellido Materno'] || ''}</td>
                   <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha de nacimiento', this.innerText)">${row['Fecha de nacimiento'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Numero de viajero frecuente', this.innerText)">${row['Numero de viajero frecuente'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerolínea', this.innerText)">${row['Aerolínea'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Número Vuelo', this.innerText)">${row['Número Vuelo'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Origen', this.innerText)">${row['Origen'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Destino', this.innerText)">${row['Destino'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida', this.innerText)">${row['Fecha Salida'] || ''}</td>
-                  <td class="px-3 py-2 text-slate-600 font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Código Reserva (PNR)', this.innerText)">${row['Código Reserva (PNR)'] || ''}</td>
+                  <td class="px-3 py-2">${tipoBadge}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerolínea Ida', this.innerText)">${row['Aerolínea Ida'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Origen Ida', this.innerText)">${row['Origen Ida'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Destino Ida', this.innerText)">${row['Destino Ida'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Ida', this.innerText)">${row['Fecha Salida Ida'] || ''}</td>
+                  <td class="px-3 py-2 text-slate-600 font-mono font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Ida', this.innerText)">${row['PNR Ida'] || ''}</td>
+                  ${esRedondo ? `
+                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Aerolínea Regreso', this.innerText)">${row['Aerolínea Regreso'] || ''}</td>
+                  <td class="px-3 py-2 text-indigo-600 outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'Fecha Salida Regreso', this.innerText)">${row['Fecha Salida Regreso'] || ''}</td>
+                  <td class="px-3 py-2 text-indigo-600 font-mono font-bold outline-none focus:bg-yellow-50" contenteditable="true" onblur="updateExcelCell(${idx}, 'PNR Regreso', this.innerText)">${row['PNR Regreso'] || ''}</td>
+                  ` : '<td colspan="3" class="px-3 py-2 text-slate-300 text-center text-[9px]">— Sencillo —</td>'}
                 </tr>
             `;
         }).join('');
@@ -323,25 +342,51 @@
         for (const row of excelParsedData) {
             try {
                 const nombreCompleto = `${row['Nombres'] || ''} ${row['Apellido Paterno'] || ''} ${row['Apellido Materno'] || ''}`.trim();
-                const aerolinea = row['Aerolínea'] || '';
-                const numVuelo = row['Número Vuelo'] || '';
-                const horaSalida = row['Hora Salida (Local)'] || '';
-                const horaLlegada = row['Hora Llegada (Local)'] || '';
-                const pnr = row['Código Reserva (PNR)'] || '';
+                const esRedondo = String(row['Tipo'] || '').trim().toLowerCase() === 'redondo';
 
-                const esRedondo = !!row['Fecha Llegada'];
-                const detallesTecnicos = `Vuelo ${esRedondo ? 'Redondo' : 'Sencillo'} | Ida: ${horaSalida}${esRedondo ? ` | Regreso: ${horaLlegada}` : ''} | Aerolinea: ${aerolinea} | Num Vuelo: ${numVuelo} | Tarifa: ${row['Tarifa'] || ''} | PNR: ${pnr}`;
+                // ── Ida ──────────────────────────────────────────────────────────
+                const aerIda  = row['Aerolínea Ida']     || '';
+                const numIda  = row['Número Vuelo Ida']  || '';
+                const oriIda  = row['Origen Ida']         || '';
+                const desIda  = row['Destino Ida']        || '';
+                const fchIda  = row['Fecha Salida Ida']   || '';
+                const hSalIda = row['Hora Salida Ida']    || '';
+                const hLlgIda = row['Hora Llegada Ida']   || '';
+                const pnrIda  = row['PNR Ida']            || '';
+                const tarIda  = row['Tarifa Ida']         || '';
+
+                // ── Regreso (solo si es redondo) ──────────────────────────────
+                const aerReg  = row['Aerolínea Regreso']     || '';
+                const numReg  = row['Número Vuelo Regreso']  || '';
+                const fchReg  = row['Fecha Salida Regreso']  || '';
+                const hSalReg = row['Hora Salida Regreso']   || '';
+                const hLlgReg = row['Hora Llegada Regreso']  || '';
+                const pnrReg  = row['PNR Regreso']           || '';
+                const tarReg  = row['Tarifa Regreso']        || '';
+
+                // Formato que espera el parser de Scripts_cotizar.html:
+                // "Vuelo Redondo | Ida: HH:MM | Regreso: HH:MM"
+                // (para redondo) o "Vuelo Sencillo" (para sencillo)
+                let detallesTecnicos;
+                if (esRedondo) {
+                    detallesTecnicos = `Vuelo Redondo | Ida: ${hSalIda} - ${hLlgIda} | Regreso: ${hSalReg} - ${hLlgReg}`
+                        + ` | Aerolinea Ida: ${aerIda} | Num Vuelo Ida: ${numIda} | PNR Ida: ${pnrIda}`
+                        + ` | Aerolinea Regreso: ${aerReg} | Num Vuelo Regreso: ${numReg} | PNR Regreso: ${pnrReg}`;
+                } else {
+                    detallesTecnicos = `Vuelo Sencillo | Ida: ${hSalIda} - ${hLlgIda}`
+                        + ` | Aerolinea: ${aerIda} | Num Vuelo: ${numIda} | PNR: ${pnrIda}`;
+                }
 
                 const payload = {
                     empresa: session.empresaIds && session.empresaIds.length > 0 ? session.empresaIds[0] : (session.empresa || ''),
                     evento: 'Carga Masiva Excel',
-                    notas: `Carga automática de Vuelo. PNR: ${pnr}`,
+                    notas: `Carga automática de Vuelo.${pnrIda ? ' PNR Ida: ' + pnrIda : ''}${esRedondo && pnrReg ? ' | PNR Reg: ' + pnrReg : ''}`,
                     servicios: [{
                         tipo: 'VUELO',
-                        origen: row['Origen'] || '',
-                        destino: row['Destino'] || '',
-                        fechaIn: row['Fecha Salida'] || '',
-                        fechaOut: row['Fecha Llegada'] || '',
+                        origen: oriIda,
+                        destino: desIda,
+                        fechaIn: fchIda,
+                        fechaOut: esRedondo ? fchReg : '',
                         detalles: detallesTecnicos
                     }],
                     pasajeros: [{
