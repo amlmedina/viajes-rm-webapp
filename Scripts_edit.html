@@ -1,0 +1,199 @@
+<script>
+    console.log('[LOAD] Scripts_Edit OK');
+    // Estado local del modal de edición
+    let editServicios = [];
+    let editPasajeros = [];
+
+    window.openEditTicket = () => {
+        const t = localData.ticketEnFoco;
+        if (!t) return;
+
+        document.getElementById('edit-ticket-id').innerText = idTicketEnFoco;
+
+        // Cargar servicios actuales en el estado editable
+        editServicios = (t.servicios || []).map((s, idx) => ({
+            id: s[7] || ('SVC-' + idx),
+            tipo: s[1] || 'VUELO',
+            origen: s[2] || '',
+            destino: s[3] || '',
+            fechaIn: formatToDateInput(s[4]) || '',
+            fechaOut: formatToDateInput(s[5]) || '',
+            detalles: s[6] || ''
+        }));
+
+        // Cargar pasajeros actuales
+        editPasajeros = (t.pasajeros || []).map((p, idx) => ({
+            _idx: idx,
+            nombre: p[1] || '',
+            nacimiento: formatToDateInput(p[2]) || '',
+            asientoVuelo: (String(p[3] || '').match(/Vuelo:\s*(\w+)/i)?.[1]) || 'Indiferente',
+            equipaje: p[4] || 'Solo Artículo Personal',
+            linkID: p[5] || ''
+        }));
+
+        editRenderAll();
+        document.getElementById('modal-edit-ticket').classList.remove('hidden');
+    };
+
+    function editRenderAll() {
+        editRenderServices();
+        editRenderPassengers();
+    }
+
+    function editRenderServices() {
+        const c = document.getElementById('edit-services-container');
+        if (!c) return;
+        if (editServicios.length === 0) {
+            c.innerHTML = `<p class="text-xs text-slate-400 italic p-4 text-center">Sin servicios. Agrega uno.</p>`;
+            return;
+        }
+        c.innerHTML = editServicios.map((s, idx) => `
+    <div class="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 relative">
+      <span class="absolute -top-3 left-4 bg-violet-600 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest">SERVICIO ${idx + 1}</span>
+      ${editServicios.length > 1 ? `<button onclick="editRemoveService(${idx})" class="absolute top-2 right-2 bg-red-500 text-white w-7 h-7 rounded-full text-xs font-bold shadow-lg flex items-center justify-center">x</button>` : ''}
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Tipo</label>
+          <select onchange="editUpdateService(${idx},'tipo',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+            <option ${s.tipo === 'VUELO' ? 'selected' : ''}>VUELO</option>
+            <option ${s.tipo === 'HOTEL' ? 'selected' : ''}>HOTEL</option>
+            <option ${s.tipo === 'AUTOBUS' ? 'selected' : ''}>AUTOBUS</option>
+            <option ${s.tipo === 'CRUCERO' ? 'selected' : ''}>CRUCERO</option>
+            <option ${s.tipo === 'TRASLADO' ? 'selected' : ''}>TRASLADO</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Origen / Ciudad</label>
+          <input type="text" value="${s.origen}" oninput="editUpdateService(${idx},'origen',this.value)" placeholder="MEX" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500 uppercase">
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Destino</label>
+          <input type="text" value="${s.destino}" oninput="editUpdateService(${idx},'destino',this.value)" placeholder="CUN" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500 uppercase">
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Detalles</label>
+          <input type="text" value="${s.detalles}" oninput="editUpdateService(${idx},'detalles',this.value)" placeholder="Redondo, Solo Ida..." class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Fecha Entrada / Salida</label>
+          <input type="date" value="${s.fechaIn}" onchange="editUpdateService(${idx},'fechaIn',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Fecha Salida / Regreso</label>
+          <input type="date" value="${s.fechaOut}" onchange="editUpdateService(${idx},'fechaOut',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+        </div>
+      </div>
+    </div>`).join('');
+    }
+
+    function editRenderPassengers() {
+        const c = document.getElementById('edit-passengers-container');
+        if (!c) return;
+        if (editPasajeros.length === 0) {
+            c.innerHTML = `<p class="text-xs text-slate-400 italic p-4 text-center">Sin pasajeros. Agrega uno.</p>`;
+            return;
+        }
+        const hasVuelo = editServicios.some(s => s.tipo === 'VUELO');
+        c.innerHTML = editPasajeros.map((p, idx) => `
+    <div class="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 relative">
+      <span class="absolute -top-3 left-4 bg-violet-600 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest">PASAJERO ${idx + 1}</span>
+      ${editPasajeros.length > 1 ? `<button onclick="editRemovePassenger(${idx})" class="absolute top-2 right-2 bg-red-500 text-white w-7 h-7 rounded-full text-xs font-bold shadow-lg flex items-center justify-center">x</button>` : ''}
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+        <div class="md:col-span-2">
+          <label class="text-[8px] font-black text-slate-400 uppercase">Nombre Completo</label>
+          <input type="text" list="lista-nombres" value="${p.nombre}"
+            oninput="editUpdatePassenger(${idx},'nombre',this.value)"
+            class="w-full border-b-2 border-slate-200 py-2 outline-none font-black text-slate-800 bg-transparent focus:border-violet-500">
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Fecha Nacimiento</label>
+          <input type="date" value="${p.nacimiento}" onchange="editUpdatePassenger(${idx},'nacimiento',this.value)"
+            class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+        </div>
+        ${hasVuelo ? `
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Asiento Vuelo</label>
+          <select onchange="editUpdatePassenger(${idx},'asientoVuelo',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+            <option ${p.asientoVuelo === 'Indiferente' ? 'selected' : ''}>Indiferente</option>
+            <option ${p.asientoVuelo === 'Ventana' ? 'selected' : ''}>Ventana</option>
+            <option ${p.asientoVuelo === 'Pasillo' ? 'selected' : ''}>Pasillo</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[8px] font-black text-slate-400 uppercase">Equipaje</label>
+          <select onchange="editUpdatePassenger(${idx},'equipaje',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+            <option ${p.equipaje === 'Solo Artículo Personal' ? 'selected' : ''}>Solo Artículo Personal</option>
+            <option ${p.equipaje === 'Maleta de Mano' ? 'selected' : ''}>Maleta de Mano</option>
+            <option ${p.equipaje === 'Maleta Documentada' ? 'selected' : ''}>Maleta Documentada</option>
+            <option ${p.equipaje === '2 Maletas Documentadas' ? 'selected' : ''}>2 Maletas Documentadas</option>
+          </select>
+        </div>` : ''}
+        <div class="${hasVuelo ? '' : 'md:col-span-2'}">
+          <label class="text-[8px] font-black text-slate-400 uppercase">Link Identificacion</label>
+          <input type="text" value="${p.linkID}" oninput="editUpdatePassenger(${idx},'linkID',this.value)"
+            placeholder="https://drive.google.com/..."
+            class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-violet-500">
+        </div>
+      </div>
+    </div>`).join('');
+    }
+
+    // Helpers de mutación de estado local — NO re-renderizan para no perder el foco
+    window.editUpdateService = (idx, field, val) => { if (editServicios[idx]) editServicios[idx][field] = val; };
+    window.editUpdatePassenger = (idx, field, val) => { if (editPasajeros[idx]) editPasajeros[idx][field] = val; };
+
+    window.editRemoveService = (idx) => {
+        editServicios.splice(idx, 1);
+        editRenderAll();
+    };
+    window.editRemovePassenger = (idx) => {
+        editPasajeros.splice(idx, 1);
+        editRenderPassengers();
+    };
+
+    window.editAddService = () => {
+        editServicios.push({ id: 'SVC-' + Date.now(), tipo: 'VUELO', origen: '', destino: '', fechaIn: '', fechaOut: '', detalles: '' });
+        editRenderAll();
+        setTimeout(() => document.getElementById('edit-services-container')?.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+    };
+    window.editAddPassenger = () => {
+        editPasajeros.push({ nombre: '', nacimiento: '', asientoVuelo: 'Indiferente', equipaje: 'Solo Artículo Personal', linkID: '' });
+        editRenderPassengers();
+        setTimeout(() => document.getElementById('edit-passengers-container')?.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+    };
+
+    window.saveEditTicket = async () => {
+        // Validaciones básicas
+        if (editServicios.length === 0) return Toast.fire({ text: 'Agrega al menos un servicio.', icon: 'warning' });
+        if (editPasajeros.length === 0) return Toast.fire({ text: 'Agrega al menos un pasajero.', icon: 'warning' });
+        if (editServicios.some(s => !s.origen || !s.destino)) return Toast.fire({ text: 'Completa origen y destino de todos los servicios.', icon: 'warning' });
+        if (editPasajeros.some(p => !p.nombre)) return Toast.fire({ text: 'Completa el nombre de todos los pasajeros.', icon: 'warning' });
+
+        const btn = document.getElementById('btn-save-edit-ticket');
+        btn.disabled = true; btn.innerText = 'GUARDANDO...';
+
+        const res = await apiCall('editTicket', {
+            idTicket: idTicketEnFoco,
+            servicios: editServicios,
+            pasajeros: editPasajeros
+        });
+
+        btn.disabled = false; btn.innerText = '✓ Guardar Cambios';
+
+        if (res.status === 'success') {
+            closeModal('modal-edit-ticket');
+            closeModal('modal-detalles');
+            showLoading('Actualizando...');
+            await refreshDashboardSilencioso();
+            hideLoading();
+            Toast.fire({ text: '✓ Ticket actualizado correctamente.', icon: 'success', timer: 2000, showConfirmButton: false });
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // REPORTE DE DESEMPEÑO
+    // ─────────────────────────────────────────────────────────────────────────────
+
+</script>

@@ -1,0 +1,923 @@
+<script>
+    console.log('[LOAD] Scripts_Admin OK');
+    window.cargarReporteDesempeno = async () => {
+        const desde = document.getElementById('reporte-desde')?.value || '';
+        const hasta = document.getElementById('reporte-hasta')?.value || '';
+
+        const body = document.getElementById('reporte-body');
+        body.innerHTML = `<div class="bg-white rounded-2xl p-12 text-center card-shadow border border-slate-100"><p class="font-black text-slate-400 animate-pulse">Calculando metricas...</p></div>`;
+
+        const res = await apiCall('getMetricasTiempos', { fechaDesde: desde || undefined, fechaHasta: hasta || undefined });
+
+        if (res.status !== 'success') {
+            body.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-2xl p-8 text-center"><p class="font-black text-red-600">${res.message}</p></div>`;
+            return;
+        }
+
+        if (res.data.sinDatos) {
+            body.innerHTML = `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-12 text-center">
+      <p class="font-black text-amber-700 text-sm mb-2">No hay datos en Logs_Estado todavia.</p>
+      <p class="text-xs text-amber-600 font-bold">Los tiempos se registran a partir de ahora con cada cambio de estado. Crea la hoja <code class="bg-amber-100 px-1 rounded">Logs_Estado</code> en el Sheet ERP con encabezados: <b>IdTicket | Estado | Timestamp | Usuario | EmpresaId | AsignadoA</b></p>
+    </div>`;
+            return;
+        }
+
+        body.innerHTML = renderReporte(res.data, desde, hasta);
+    };
+
+    // Helper global — NO usar <= dentro de template strings (falla en algunos browsers)
+    function colorDias(d, umbral) {
+        if (d === null || d === undefined) return 'text-slate-400';
+        const mitad = umbral * 0.5;
+        if (d - mitad < 0) return 'text-emerald-600 font-black';  // d < umbral*0.5
+        if (d - umbral < 0.01) return 'text-amber-600 font-black';    // d <= umbral
+        return 'text-red-600 font-black';
+    }
+
+    function renderReporte(data, desde, hasta) {
+        const { ejecutivos, stale } = data;
+
+        // Formato inteligente: minutos → "23 min", "2h 15m", "1d 4h"
+        const fmtTime = (mins) => {
+            if (mins === null || mins === undefined) return '—';
+            if (mins < 60) return mins + ' min';
+            if (mins < 1440) return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+            const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60);
+            return d + 'd ' + (h > 0 ? h + 'h' : '');
+        };
+
+        // Color: umbral en minutos
+        const colorTiempo = (mins, umbralMins) => {
+            if (mins === null || mins === undefined) return 'text-slate-400';
+            return mins <= umbralMins ? 'font-bold text-emerald-600' : mins <= umbralMins * 2 ? 'font-bold text-amber-600' : 'font-bold text-red-600';
+        };
+
+        const periodoLabel = desde && hasta ? `${desde} → ${hasta}` : desde ? `Desde ${desde}` : hasta ? `Hasta ${hasta}` : 'Todo el historial';
+
+        let html = `
+  <!-- Header resumen -->
+  <div class="bg-white rounded-2xl card-shadow border border-slate-100 p-5 mb-4">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+      <div>
+        <h3 class="font-black text-slate-800 text-lg">Reporte de Desempeno</h3>
+        <p class="text-xs font-bold text-slate-400">${periodoLabel} · ${ejecutivos.reduce((a, e) => a + e.totalTickets, 0)} tickets analizados</p>
+      </div>
+      <div class="flex gap-4 text-center">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2">
+          <p class="text-[9px] font-black text-emerald-600 uppercase">Completados</p>
+          <p class="text-xl font-black text-emerald-700">${ejecutivos.reduce((a, e) => a + e.completados, 0)}</p>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+          <p class="text-[9px] font-black text-amber-600 uppercase">En Proceso</p>
+          <p class="text-xl font-black text-amber-700">${ejecutivos.reduce((a, e) => a + e.enProceso, 0)}</p>
+        </div>
+        <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-2">
+          <p class="text-[9px] font-black text-red-500 uppercase">Stale </p>
+          <p class="text-xl font-black text-red-600">${stale.length}</p>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+        // ── Tabla por ejecutivo ──────────────────────────────────────────────────
+        html += `
+  <div class="bg-white rounded-2xl card-shadow border border-slate-100 overflow-hidden mb-4">
+    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+      <h4 class="font-black text-slate-700 text-sm uppercase tracking-widest"> Tiempos Promedio por Ejecutivo</h4>
+      <p class="text-[9px] text-slate-400 font-bold mt-0.5">Referencia: cotizar &lt;60min · cliente &lt;3d · emitir &lt;60min</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse min-w-[700px]">
+        <thead>
+          <tr class="bg-white text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+            <th class="px-6 py-3 text-left">Ejecutivo</th>
+            <th class="px-4 py-3 text-center">Tickets</th>
+            <th class="px-4 py-3 text-center">[OK] Comp.</th>
+            <th class="px-4 py-3 text-center"> Proceso</th>
+            <th class="px-4 py-3 text-center">-><br>Recibir->Cotizar</th>
+            <th class="px-4 py-3 text-center">->[OK]<br>Cliente decide</th>
+            <th class="px-4 py-3 text-center">[OK]-><br>Autorizar->Comprar</th>
+            <th class="px-4 py-3 text-center"> Total</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          ${ejecutivos.map(e => `
+          <tr class="hover:bg-slate-50/50 transition cursor-pointer" onclick="toggleDetalleEjecutivo('ej-${e.ejecutivo.replace(/[^a-z0-9]/gi, '_')}')">
+            <td class="px-6 py-4">
+              <p class="font-black text-slate-800 text-sm">${e.ejecutivo}</p>
+            </td>
+            <td class="px-4 py-4 text-center font-bold text-slate-600">${e.totalTickets}</td>
+            <td class="px-4 py-4 text-center font-bold text-emerald-600">${e.completados}</td>
+            <td class="px-4 py-4 text-center font-bold text-amber-600">${e.enProceso}</td>
+            <td class="px-4 py-4 text-center text-xs ${colorTiempo(e.promMinsACotizar, 60)}">${fmtTime(e.promMinsACotizar)}</td>
+            <td class="px-4 py-4 text-center text-xs ${colorTiempo(e.promMinsAAutorizar, 4320)}">${fmtTime(e.promMinsAAutorizar)}</td>
+            <td class="px-4 py-4 text-center text-xs ${colorTiempo(e.promMinsAComprar, 60)}">${fmtTime(e.promMinsAComprar)}</td>
+            <td class="px-4 py-4 text-center text-xs font-black text-slate-700">${fmtTime(e.promMinsTotal)}</td>
+          </tr>
+          <tr id="ej-${e.ejecutivo.replace(/[^a-z0-9]/gi, '_')}" class="hidden bg-slate-50/30">
+            <td colspan="8" class="px-6 py-3">
+              <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table class="w-full text-xs border-collapse min-w-[600px]">
+                  <thead>
+                    <tr class="bg-slate-100 text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                      <th class="px-4 py-2 text-left">Ticket</th>
+                      <th class="px-4 py-2 text-left">Empresa</th>
+                      <th class="px-4 py-2 text-center">Estado</th>
+                      <th class="px-4 py-2 text-center">→Cotizar</th>
+                      <th class="px-4 py-2 text-center">Cliente</th>
+                      <th class="px-4 py-2 text-center">→Comprar</th>
+                      <th class="px-4 py-2 text-center">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    ${e.tickets.map(t => `
+                    <tr class="hover:bg-slate-50 transition">
+                      <td class="px-4 py-2 font-mono text-[9px] text-slate-500">${t.idTicket}</td>
+                      <td class="px-4 py-2 font-bold text-slate-700">${t.empresaNombre}</td>
+                      <td class="px-4 py-2 text-center"><span class="status-badge ${getBadgeColorStatic(t.estadoActual)} text-[8px]">${t.estadoActual}</span></td>
+                      <td class="px-4 py-2 text-center ${colorTiempo(t.minsACotizar, 60)}">${fmtTime(t.minsACotizar)}</td>
+                      <td class="px-4 py-2 text-center ${colorTiempo(t.minsAAutorizar, 4320)}">${fmtTime(t.minsAAutorizar)}</td>
+                      <td class="px-4 py-2 text-center ${colorTiempo(t.minsAComprar, 60)}">${fmtTime(t.minsAComprar)}</td>
+                      <td class="px-4 py-2 text-center font-black text-slate-700">${fmtTime(t.minsTotal)}</td>
+                    </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+
+        // ── Alertas Stale ────────────────────────────────────────────────────────
+        if (stale.length > 0) {
+            html += `
+    <div class="bg-white rounded-2xl card-shadow border border-red-200 overflow-hidden">
+      <div class="px-6 py-4 border-b border-red-100 bg-red-50 flex items-center gap-3">
+        <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
+        <h4 class="font-black text-red-700 text-sm uppercase tracking-widest">Tickets sin Movimiento</h4>
+        <span class="ml-auto text-[9px] font-black bg-red-100 text-red-600 px-3 py-1 rounded-full">${stale.length} alertas</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse min-w-[500px]">
+          <thead>
+            <tr class="bg-white text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+              <th class="px-6 py-3 text-left">Ticket</th>
+              <th class="px-4 py-3 text-left">Empresa</th>
+              <th class="px-4 py-3 text-center">Ejecutivo</th>
+              <th class="px-4 py-3 text-center">Estado</th>
+              <th class="px-4 py-3 text-center">Sin movimiento</th>
+              <th class="px-4 py-3 text-center">Umbral</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-50">
+            ${stale.map(s => `
+            <tr class="hover:bg-red-50/30 transition cursor-pointer" onclick="openDetalles('${s.idTicket}')">
+              <td class="px-6 py-4 font-mono text-[10px] text-slate-500 font-bold">${s.idTicket}</td>
+              <td class="px-4 py-4 font-bold text-slate-700 text-xs">${s.empresaNombre}</td>
+              <td class="px-4 py-4 text-center font-bold text-slate-600 text-xs">${s.asignadoA}</td>
+              <td class="px-4 py-4 text-center"><span class="status-badge ${getBadgeColorStatic(s.estadoActual)} text-[8px]">${s.estadoActual}</span></td>
+              <td class="px-4 py-4 text-center font-black text-red-600 text-sm">${fmtTime(s.minsSinMovimiento)}</td>
+              <td class="px-4 py-4 text-center text-[10px] font-bold text-slate-400">&gt;${fmtTime(s.umbralMins)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+        }
+
+        return html;
+    }
+
+    // Helper para color de badge sin depender del DOM
+    function getBadgeColorStatic(estado) {
+        const map = { Pendiente: 'bg-amber-100 text-amber-700', Cotizado: 'bg-blue-100 text-blue-700', Autorizado: 'bg-emerald-100 text-emerald-700', Comprado: 'bg-purple-100 text-purple-700', Cancelado: 'bg-red-100 text-red-700' };
+        return map[estado] || 'bg-slate-100 text-slate-600';
+    }
+
+    // Toggle de la fila de detalle por ejecutivo
+    window.toggleDetalleEjecutivo = (rowId) => {
+        const row = document.getElementById(rowId);
+        if (row) row.classList.toggle('hidden');
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EVENTOS
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // Debounce para auto-guardar evento en catálogo cuando el usuario termina de escribir
+    let _eventoTimer = null;
+    window.handleEventoInput = (val) => {
+        if (_eventoTimer) clearTimeout(_eventoTimer);
+        if (!val || val.trim().length < 2) return;
+
+        _eventoTimer = setTimeout(async () => {
+            // Verificar si ya está en el datalist (coincidencia exacta)
+            const opts = document.querySelectorAll('#lista-eventos option');
+            const existe = [...opts].some(o => o.value.toLowerCase() === val.toLowerCase().trim());
+            if (existe) return; // ya está en el catálogo, no guardar de nuevo
+
+            // Es un evento nuevo — guardarlo en el catálogo para la empresa actual
+            const ids = session.empresaIds || [];
+            const empresaId = ids.length === 1
+                ? ids[0]
+                : (document.getElementById('form-empresa-select')?.value || ids[0] || '');
+            if (!empresaId) return;
+
+            const res = await apiCall('saveEvento', { empresaId, nombre: val.trim() });
+            if (res.status === "success") {
+                // Agregar al datalist en memoria para que aparezca de inmediato
+                const dl = document.getElementById('lista-eventos');
+                if (dl && ![...dl.options].some(o => o.value === val.trim())) {
+                    const opt = document.createElement('option');
+                    opt.value = val.trim();
+                    dl.appendChild(opt);
+                }
+            }
+        }, 800);
+    };
+
+    // Guardar el evento de un ticket existente desde el modal de detalles
+    window.guardarEventoTicket = async () => {
+        const val = document.getElementById('det-evento-input')?.value?.trim() || '';
+        const btn = document.getElementById('btn-guardar-evento');
+        if (btn) { btn.disabled = true; btn.innerText = '...'; }
+
+        const res = await apiCall('updateTicketEvento', { idTicket: idTicketEnFoco, evento: val });
+
+        if (btn) { btn.disabled = false; btn.innerText = 'Guardar'; }
+
+        if (res.status === "success") {
+            // Agregar al datalist si es nuevo
+            if (val) {
+                const dl = document.getElementById('lista-eventos');
+                if (dl && ![...dl.options].some(o => o.value === val)) {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    dl.appendChild(opt);
+                }
+            }
+            Toast.fire({ text: ` Evento ${val ? '"' + val + '"' : 'eliminado'}`, icon: 'success', timer: 1500, showConfirmButton: false, toast: true, position: 'bottom-end' });
+            // Actualizar en memoria local
+            const tr = localData.dashboard.find(t => t[0] === idTicketEnFoco);
+            if (tr) tr[9] = val;
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // NOTIFICACIONES
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    let notifData = { empresas: [], ejecutivos: [] };
+
+    async function renderNotificacionesTable() {
+        showLoading("Cargando configuración...");
+        const res = await apiCall('getNotificaciones');
+        hideLoading();
+        if (res.status !== "success") { Toast.fire({ text: res.message, icon: "error" }); return; }
+        notifData = res.data;
+        paintNotifTable();
+    }
+
+    // Agregar empresa manualmente a notificaciones
+    window.addEmpresaNotif = async () => {
+        const todas = notifData.todasEmpresas || [];
+        const yaVisibles = new Set(notifData.empresas.map(e => e.empresaId));
+        const disponibles = todas.filter(c => !yaVisibles.has(c.id));
+
+        if (disponibles.length === 0) {
+            Toast.fire({ text: 'Todas las empresas ya están en la lista.', icon: 'info' });
+            return;
+        }
+
+        const optsHtml = disponibles.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
+        const { value: empId } = await Swal.fire({
+            title: 'Agregar Empresa',
+            html: `<select id="swal-add-emp" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-700 outline-none focus:border-indipris-main text-sm">
+      <option value="">- Seleccionar empresa -</option>${optsHtml}
+    </select>`,
+            showCancelButton: true,
+            confirmButtonText: 'Agregar',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const val = document.getElementById('swal-add-emp').value;
+                if (!val) Swal.showValidationMessage('Selecciona una empresa');
+                return val;
+            }
+        });
+
+        if (!empId) return;
+        const empNombre = disponibles.find(c => c.id === empId)?.nombre || empId;
+
+        // Agregar a la lista local con una fila vacía de ejecutivo
+        notifData.empresas.push({
+            empresaId: empId,
+            empresaNombre: empNombre,
+            sinConfig: true,
+            ejecutivos: []
+        });
+
+        paintNotifTable();
+        Toast.fire({ text: `${empNombre} agregada. Asigna ejecutivos.`, icon: 'success', timer: 2000, showConfirmButton: false });
+    };
+
+    function paintNotifTable() {
+        const container = document.getElementById('notif-container');
+        const empty = document.getElementById('notif-empty');
+        if (!notifData.empresas || notifData.empresas.length === 0) {
+            container.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+        empty.classList.add('hidden');
+
+        // Opciones de ejecutivos para los selects
+        const ejOpts = `<option value="">- Seleccionar -</option>` +
+            notifData.ejecutivos.map(e => `<option value="${e.username}">${e.username}${e.email ? '   |   ' + e.email : ''}</option>`).join('');
+
+        container.innerHTML = notifData.empresas.map((emp, eIdx) => {
+            const sinConfigBadge = emp.sinConfig
+                ? `<span class="ml-2 text-[8px] font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Sin config - usando fallback</span>`
+                : '';
+
+            // Filas de ejecutivos existentes
+            const filasHtml = emp.ejecutivos.map((ej, rIdx) => buildEjecutivoRow(emp.empresaId, eIdx, rIdx, ej, ejOpts)).join('');
+
+            return `
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden" id="notif-emp-${eIdx}">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center px-6 py-4 bg-slate-50/60 border-b border-slate-100 gap-2">
+        <div>
+          <p class="font-black text-slate-800">${emp.empresaNombre}${sinConfigBadge}</p>
+          <p class="text-[9px] text-slate-400 font-mono">${emp.empresaId}</p>
+        </div>
+        <button onclick="addEjecutivoRow(${eIdx})"
+          class="shrink-0 bg-pink-50 text-pink-600 border border-pink-200 px-4 py-2 rounded-xl text-[10px] font-black hover:bg-pink-100 transition shadow-sm uppercase tracking-widest">
+          + Agregar Ejecutivo
+        </button>
+      </div>
+
+      ${emp.ejecutivos.length > 0 ? `
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse min-w-[600px]">
+          <thead>
+            <tr class="text-slate-400 text-[9px] uppercase font-black tracking-widest border-b border-slate-100 bg-white">
+              <th class="px-6 py-3 w-1/3 text-left">Ejecutivo</th>
+              <th class="px-4 py-3 text-center">🟡 Creación</th>
+              <th class="px-4 py-3 text-center">🟢 Autorizado</th>
+              <th class="px-4 py-3 text-center">🔴 Rechazado</th>
+              <th class="px-4 py-3 text-center">⚫ Cancelado</th>
+              <th class="px-4 py-3 text-center">Prueba</th>
+              <th class="px-4 py-3 text-center">Quitar</th>
+            </tr>
+          </thead>
+          <tbody id="notif-rows-${eIdx}" class="divide-y divide-slate-50">
+            ${filasHtml}
+          </tbody>
+        </table>
+      </div>` : `
+      <div id="notif-rows-${eIdx}" class="hidden"></div>
+      <p class="px-6 py-4 text-xs text-slate-400 italic">Sin ejecutivos asignados. Se usara el fallback (todos los miembros de Indipris).</p>`}
+    </div>`;
+        }).join('');
+    }
+
+    function buildEjecutivoRow(empresaId, eIdx, rIdx, ej, ejOpts) {
+        const rowKey = `${eIdx}-${rIdx}`;
+        const optsConSelected = ejOpts.replace(`value="${ej.ejecutivoUsername}"`, `value="${ej.ejecutivoUsername}" selected`);
+
+        const toggle = (campo, val) => `
+    <label class="relative inline-flex items-center justify-center cursor-pointer">
+      <input type="checkbox" class="sr-only peer notif-toggle"
+        data-ekey="${rowKey}" data-campo="${campo}" ${val ? 'checked' : ''}
+        onchange="onNotifToggle('${empresaId}', ${eIdx}, ${rIdx})">
+      <div class="w-9 h-5 bg-slate-200 peer-checked:bg-indipris-main rounded-full transition-all
+        peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-0.5 after:left-0.5
+        after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all after:shadow-sm"></div>
+    </label>`;
+
+        return `<tr id="notif-row-${rowKey}" class="hover:bg-slate-50/50 transition">
+    <td class="px-6 py-3">
+      <select data-ekey="${rowKey}" data-campo="ejecutivoUsername"
+        onchange="onNotifToggle('${empresaId}', ${eIdx}, ${rIdx})"
+        class="w-full border-b-2 border-slate-200 py-1.5 font-bold outline-none text-slate-700 bg-transparent focus:border-indipris-main text-xs">
+        ${optsConSelected}
+      </select>
+    </td>
+    <td class="px-4 py-3 text-center">${toggle('CREACION', ej.CREACION)}</td>
+    <td class="px-4 py-3 text-center">${toggle('AUTORIZADO', ej.AUTORIZADO)}</td>
+    <td class="px-4 py-3 text-center">${toggle('RECHAZADO', ej.RECHAZADO)}</td>
+    <td class="px-4 py-3 text-center">${toggle('CANCELADO', ej.CANCELADO)}</td>
+    <td class="px-4 py-3 text-center">
+      <button onclick="testWhatsapp('${empresaId}', ${eIdx}, ${rIdx})"
+        title="Enviar WhatsApp de prueba"
+        class="w-8 h-8 rounded-full bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 transition flex items-center justify-center mx-auto text-sm shadow-sm">
+        
+      </button>
+    </td>
+    <td class="px-4 py-3 text-center">
+      <button onclick="removeEjecutivoRow('${empresaId}', ${eIdx}, ${rIdx})"
+        class="w-8 h-8 rounded-full bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition flex items-center justify-center mx-auto font-bold text-sm shadow-sm">
+        
+      </button>
+    </td>
+  </tr>`;
+    }
+
+    // Leer el estado actual de una fila desde el DOM y guardar
+    window.onNotifToggle = async (empresaId, eIdx, rIdx) => {
+        const rowKey = `${eIdx}-${rIdx}`;
+        const row = document.getElementById(`notif-row-${rowKey}`);
+        if (!row) return;
+
+        const ej = notifData.empresas[eIdx]?.ejecutivos[rIdx];
+        if (!ej) return;
+
+        // Leer del DOM
+        const sel = row.querySelector(`select[data-campo="ejecutivoUsername"]`);
+        if (sel) ej.ejecutivoUsername = sel.value;
+        row.querySelectorAll('.notif-toggle').forEach(cb => { ej[cb.dataset.campo] = cb.checked; });
+
+        row.classList.add('opacity-50');
+        const res = await apiCall('saveNotificacion', {
+            empresaId,
+            ejecutivoUsername: ej.ejecutivoUsername,
+            CREACION: ej.CREACION,
+            AUTORIZADO: ej.AUTORIZADO,
+            RECHAZADO: ej.RECHAZADO,
+            CANCELADO: ej.CANCELADO,
+            rowIndex: ej.rowIndex
+        });
+        row.classList.remove('opacity-50');
+
+        if (res.status === "success") {
+            // Si era una fila nueva (sin rowIndex), recargar para obtener el rowIndex real
+            if (!ej.rowIndex) await renderNotificacionesTable();
+            else Toast.fire({ text: '✓ Guardado', icon: 'success', timer: 1200, showConfirmButton: false, toast: true, position: 'bottom-end' });
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    // Agregar una fila nueva en memoria y repintar solo ese bloque de empresa
+    window.addEjecutivoRow = (eIdx) => {
+        const emp = notifData.empresas[eIdx];
+        if (!emp) return;
+        emp.ejecutivos.push({ rowIndex: null, ejecutivoUsername: '', CREACION: true, AUTORIZADO: true, RECHAZADO: true, CANCELADO: true });
+        emp.sinConfig = false;
+        // Repintar solo la empresa afectada
+        paintNotifTable();
+        // Hacer scroll a la nueva fila
+        setTimeout(() => {
+            const emp_el = document.getElementById(`notif-emp-${eIdx}`);
+            if (emp_el) emp_el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+    };
+
+    // Quitar una fila: si tiene rowIndex la elimina en el Sheet, si no solo la quita en memoria
+    window.removeEjecutivoRow = async (empresaId, eIdx, rIdx) => {
+        const emp = notifData.empresas[eIdx];
+        const ej = emp?.ejecutivos[rIdx];
+        if (!ej) return;
+
+        const { isConfirmed } = await Toast.fire({
+            title: '¿Quitar ejecutivo?',
+            text: ej.ejecutivoUsername ? `Se quitara a "${ej.ejecutivoUsername}" de las notificaciones de esta empresa.` : 'Se quitara esta fila vacia.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, quitar',
+            cancelButtonText: 'Cancelar'
+        });
+        if (!isConfirmed) return;
+
+        if (ej.rowIndex) {
+            showLoading("Eliminando...");
+            const res = await apiCall('deleteNotificacion', { rowIndex: ej.rowIndex });
+            hideLoading();
+            if (res.status !== "success") { Toast.fire({ text: res.message, icon: 'error' }); return; }
+        }
+
+        // Actualizar estado local y repintar
+        emp.ejecutivos.splice(rIdx, 1);
+        if (emp.ejecutivos.length === 0) emp.sinConfig = true;
+
+        // Ajustar rowIndex de filas subsecuentes de la misma empresa si se eliminó del Sheet
+        if (ej.rowIndex) {
+            notifData.empresas.forEach(e => {
+                e.ejecutivos.forEach(r => {
+                    if (r.rowIndex && r.rowIndex > ej.rowIndex) r.rowIndex--;
+                });
+            });
+        }
+
+        paintNotifTable();
+        Toast.fire({ text: '✓ Ejecutivo quitado', icon: 'success', timer: 1200, showConfirmButton: false, toast: true, position: 'bottom-end' });
+    };
+
+    // Enviar WhatsApp de prueba
+    window.testWhatsapp = async (empresaId, eIdx, rIdx) => {
+        const ej = notifData.empresas[eIdx]?.ejecutivos[rIdx];
+        if (!ej?.ejecutivoUsername) {
+            Toast.fire({ text: 'Selecciona un ejecutivo primero.', icon: 'warning' });
+            return;
+        }
+
+        // Buscar teléfono del ejecutivo en los datos de notificaciones
+        const ejInfo = notifData.ejecutivos.find(e => e.username === ej.ejecutivoUsername);
+        if (!ejInfo?.telefono) {
+            Toast.fire({ text: 'El ejecutivo no tiene teléfono registrado.', icon: 'error' });
+            return;
+        }
+
+        const btn = document.getElementById(`notif-row-${eIdx}-${rIdx}`)?.querySelector('button[onclick*="testWhatsapp"]');
+        if (btn) { btn.innerText = '⏳ Enviando...'; btn.disabled = true; }
+
+        const empresaNombre = notifData.empresas[eIdx]?.empresaNombre || empresaId;
+        const msg = `*Indipris Travel - Prueba*\nHola ${ej.ejecutivoUsername}, este es un mensaje de prueba para ${empresaNombre}.\nSi recibes esto, las notificaciones estan configuradas correctamente.`;
+
+        await _sendWA([{ nombre: ej.ejecutivoUsername, telefono: ejInfo.telefono }], msg, 'TEST', '-');
+
+        if (btn) { btn.innerText = '📲 Test'; btn.disabled = false; }
+        Toast.fire({ text: `Mensaje de prueba enviado a ${ejInfo.telefono}`, icon: 'success', timer: 3000, showConfirmButton: false });
+    };
+
+    // Filtrar las cards de empresa por texto
+    window.filterNotifCards = (q) => {
+        const lower = q.toLowerCase();
+        document.querySelectorAll('#notif-container > div').forEach(card => {
+            card.style.display = (!lower || card.innerText.toLowerCase().includes(lower)) ? '' : 'none';
+        });
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // USUARIOS
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.renderUsuariosTable = async () => {
+        const res = await apiCall('getUsuarios');
+        if (res.status !== "success") return;
+        // u[9] = nombre resuelto de empresa, u[10] = vacaciones boolean
+        document.getElementById('usuarios-body').innerHTML = res.data.map(u => {
+            const esIndiprisOSuper = (u[2] === 'indipris' || u[2] === 'super');
+            const enVacaciones = u[10] === true;
+            const vacBadge = esIndiprisOSuper
+                ? (enVacaciones
+                    ? `<span class="ml-2 text-[8px] font-black bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full cursor-pointer" onclick="toggleVacaciones('${u[0]}');event.stopPropagation()" title="Click para desactivar">🏖 VACACIONES</span>`
+                    : `<span class="ml-2 text-[8px] font-bold text-slate-300 bg-slate-50 px-2 py-0.5 rounded-full cursor-pointer hover:bg-orange-50 hover:text-orange-500 transition" onclick="toggleVacaciones('${u[0]}');event.stopPropagation()" title="Click para activar vacaciones">🏖</span>`)
+                : '';
+            return `<tr class="border-b border-slate-50 hover:bg-slate-50/50 transition ${enVacaciones ? 'opacity-60' : ''}">
+      <td class="p-6 font-black text-slate-800 text-sm">${u[0]}${vacBadge}<br><span class="text-[9px] font-bold text-slate-400 uppercase">${u[4] || 'Sin correo'}</span></td>
+      <td class="p-6"><span class="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">${u[2]}</span></td>
+      <td class="p-6 text-xs font-bold text-slate-600">${u[9] || u[3] || 'N/A'}</td>
+      <td class="p-6 text-center"><button onclick="openUserModal('${u[0]}')" class="text-[10px] font-black text-blue-600 hover:text-blue-800 underline">EDITAR</button></td>
+    </tr>`;
+        }).join('');
+    };
+
+    // Poblar checkboxes de empresa con el catálogo en memoria
+    function populateEmpresaSelect(selectedIds = []) {
+        const container = document.getElementById('usr-empresa-list');
+        if (!container) return;
+        const companies = [...localData.companies].sort((a, b) => a.nombre.localeCompare(b.nombre));
+        container.innerHTML = companies.length === 0
+            ? '<p class="text-[10px] text-slate-400 italic p-2">Cargando empresas...</p>'
+            : companies.map(c => `
+        <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white cursor-pointer transition empresa-check-item">
+          <input type="checkbox" value="${c.id}" ${selectedIds.includes(c.id) ? 'checked' : ''}
+            onchange="updateEmpresaCount()"
+            class="w-4 h-4 rounded accent-pink-600 empresa-checkbox">
+          <span class="text-xs font-bold text-slate-700 flex-1">${c.nombre}</span>
+          ${c.categoria ? `<span class="text-[8px] font-bold text-slate-400 uppercase">${c.categoria}</span>` : ''}
+        </label>`).join('');
+        document.getElementById('usr-empresa-search').value = '';
+        updateEmpresaCount();
+    }
+
+    window.updateEmpresaCount = () => {
+        const checked = document.querySelectorAll('.empresa-checkbox:checked').length;
+        const el = document.getElementById('usr-empresa-count');
+        if (el) el.innerText = checked > 0 ? `${checked} empresa${checked > 1 ? 's' : ''} seleccionada${checked > 1 ? 's' : ''}` : 'Sin empresas asignadas';
+    };
+
+    window.filterEmpresaSelect = (q) => {
+        const lower = q.toLowerCase();
+        document.querySelectorAll('.empresa-check-item').forEach(item => {
+            item.style.display = (!lower || item.innerText.toLowerCase().includes(lower)) ? '' : 'none';
+        });
+    };
+
+    function getSelectedEmpresaIds() {
+        return [...document.querySelectorAll('.empresa-checkbox:checked')].map(cb => cb.value);
+    }
+
+    window.toggleVacaciones = async (usuario) => {
+        const res = await apiCall('toggleVacaciones', { usuario });
+        if (res.status === 'success') {
+            const estado = res.data.vacaciones ? 'en vacaciones' : 'activo';
+            Toast.fire({ text: `${usuario} ahora está ${estado}`, icon: 'success', timer: 2000, showConfirmButton: false });
+            await renderUsuariosTable();
+        } else {
+            Toast.fire({ text: res.message, icon: 'error' });
+        }
+    };
+
+    window.openUserModal = async (usuarioLogin = '') => {
+        if (session.role !== 'super') return; // solo super puede gestionar usuarios
+        document.getElementById('usr-modal-title').innerText = usuarioLogin ? "Editar Usuario" : "Nuevo Usuario";
+        document.getElementById('usr-login').value = usuarioLogin;
+        document.getElementById('usr-login').disabled = !!usuarioLogin;
+        document.getElementById('usr-pass').value = '';
+        document.getElementById('usr-role').value = 'viajero';
+        document.getElementById('usr-email').value = '';
+        document.getElementById('usr-tel').value = '';
+        populateEmpresaSelect([]); // vacío por defecto
+
+        if (usuarioLogin) {
+            showLoading("Cargando datos del usuario...");
+            const res = await apiCall('getUsuarioDetalle', { usuarioLogin });
+            hideLoading();
+            if (res.status === "success") {
+                document.getElementById('usr-role').value = res.data.role || 'viajero';
+                document.getElementById('usr-email').value = res.data.email || '';
+                document.getElementById('usr-tel').value = res.data.telefono || '';
+                const vacEl = document.getElementById('usr-vacaciones');
+                if (vacEl) vacEl.checked = res.data.vacaciones === true;
+                populateEmpresaSelect(res.data.empresaIds || []);
+            } else {
+                Toast.fire({ text: "No se pudieron cargar los datos del usuario.", icon: "error" });
+            }
+        }
+
+        document.getElementById('modal-usuario').classList.remove('hidden');
+    };
+
+    window.saveUser = async () => {
+        const login = document.getElementById('usr-login').value.trim();
+        const pass = document.getElementById('usr-pass').value.trim();
+        const empresaIds = getSelectedEmpresaIds(); // array de IDs seleccionados
+        if (!login) return Toast.fire({ text: "El nombre de usuario es obligatorio.", icon: "warning" });
+
+        const btn = document.getElementById('btn-save-usr');
+        btn.disabled = true; btn.innerText = "GUARDANDO...";
+
+        let passHash = null;
+        if (pass) passHash = await hashPassword(pass);
+
+        const res = await apiCall('saveUser', {
+            user: {
+                usuario: login,
+                passHash: passHash,
+                role: document.getElementById('usr-role').value,
+                empresaIds: empresaIds,   // array → backend guarda como CSV
+                email: document.getElementById('usr-email').value,
+                telefono: document.getElementById('usr-tel').value,
+                vacaciones: document.getElementById('usr-vacaciones')?.checked || false
+            }
+        });
+
+        if (res.status === "success") {
+            closeModal('modal-usuario');
+            await renderUsuariosTable();
+            Toast.fire({ text: "Usuario guardado.", icon: "success" });
+        } else {
+            Toast.fire({ text: res.message, icon: "error" });
+        }
+
+        btn.disabled = false; btn.innerText = "GUARDAR USUARIO";
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // RETORNO AL DASHBOARD
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.returnToDashboard = async () => {
+        document.getElementById('success-view').classList.add('hidden');
+        document.getElementById('app-view').classList.add('hidden');
+        showLoading("Actualizando datos...");
+        await refreshDashboardSilencioso();
+        document.getElementById('req-notes').value = '';
+        const evInput = document.getElementById('req-evento');
+        if (evInput) evInput.value = '';
+        actualizarDropdownsFiltro();
+        showDashboard();
+        hideLoading();
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // LOG WHATSAPP + CONFIGURACIÓN
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // Toggle panel de configuración
+    window.toggleWaConfig = () => {
+        const panel = document.getElementById('wa-config-panel');
+        const arrow = document.getElementById('wa-config-arrow');
+        const isHidden = panel.classList.toggle('hidden');
+        arrow.style.transform = isHidden ? '' : 'rotate(180deg)';
+        if (!isHidden) renderWaConfigPanel();
+    };
+
+    // Etiquetas legibles para cada template
+    const WA_TEMPLATE_LABELS = {
+        CREACION_admin: 'Creación → Admin (cliente)',
+        CREACION_indy: 'Creación → Equipo Indipris',
+        COTIZADO_admin: 'Cotizado → Admin (cliente)',
+        COTIZADO_indy: 'Cotizado → Equipo Indipris',
+        AUTORIZADO_admin: 'Autorizado → Admin (cliente)',
+        AUTORIZADO_indy: 'Autorizado → Equipo Indipris',
+        RECHAZADO_admin: 'Rechazado → Admin (cliente)',
+        RECHAZADO_indy: 'Rechazado → Equipo Indipris',
+        COMPRADO_admin: 'Comprado → Admin (cliente)',
+        COMPRADO_indy: 'Comprado → Equipo Indipris',
+        CANCELADO_admin: 'Cancelado → Admin (cliente)',
+        CANCELADO_indy: 'Cancelado → Equipo Indipris',
+        EXTRA_admin: 'Extra agregado → Admin (cliente)'
+    };
+
+    function renderWaConfigPanel() {
+        // API Key
+        document.getElementById('wa-api-key').value = waConfig.apiKey || '';
+
+        // Templates
+        const container = document.getElementById('wa-templates-container');
+        const keys = Object.keys(WA_TEMPLATE_LABELS);
+        container.innerHTML = keys.map(key => {
+            const label = WA_TEMPLATE_LABELS[key];
+            const val = (waConfig.templates[key] || '').replace(/\n/g, '\\n');
+            const grupo = key.split('_')[0];
+            const colorMap = {
+                CREACION: 'border-l-amber-400', COTIZADO: 'border-l-blue-400', AUTORIZADO: 'border-l-emerald-400',
+                RECHAZADO: 'border-l-red-400', COMPRADO: 'border-l-purple-400', CANCELADO: 'border-l-slate-400', EXTRA: 'border-l-orange-400'
+            };
+            return `<div class="border-l-4 ${colorMap[grupo] || 'border-l-slate-300'} bg-slate-50 rounded-r-xl p-3">
+      <label class="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">${label}</label>
+      <textarea id="wa-tpl-${key}" rows="2" class="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-indipris-main bg-white resize-none">${val}</textarea>
+    </div>`;
+        }).join('');
+    }
+
+    window.saveWaConfig = async () => {
+        const apiKey = document.getElementById('wa-api-key').value.trim();
+        const templates = {};
+        Object.keys(WA_TEMPLATE_LABELS).forEach(key => {
+            const el = document.getElementById('wa-tpl-' + key);
+            if (el) templates[key] = el.value.replace(/\\n/g, '\n');
+        });
+
+        showLoading('Guardando configuración...');
+        const res = await apiCall('saveConfigWA', { apiKey, templates });
+        hideLoading();
+
+        if (res.status === 'success') {
+            waConfig.apiKey = apiKey;
+            waConfig.templates = templates;
+            Toast.fire({ text: 'Configuración de WhatsApp guardada', icon: 'success', timer: 2000, showConfirmButton: false });
+        } else {
+            Toast.fire({ text: res.message || 'Error', icon: 'error' });
+        }
+    };
+    window.loadWaLogs = async () => {
+        // Renderizar panel de configuración si waConfig está disponible
+        if (waConfigLoaded) renderWaConfigPanel();
+
+        const tbody = document.getElementById('walog-body');
+        tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-slate-400 font-black animate-pulse text-xs">Cargando mensajes...</td></tr>';
+
+        const res = await apiCall('getLogsWhatsapp');
+        if (res.status !== 'success') {
+            tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-red-400 font-black text-xs">' + (res.message || 'Error') + '</td></tr>';
+            return;
+        }
+
+        const logs = res.data.logs || [];
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="p-12 text-center text-slate-300 font-black italic text-xs">Sin mensajes registrados aún.</td></tr>';
+            return;
+        }
+
+        const eventoBadge = (ev) => {
+            const map = {
+                CREACION: 'bg-amber-100 text-amber-700',
+                COTIZADO: 'bg-blue-100 text-blue-700',
+                AUTORIZADO: 'bg-emerald-100 text-emerald-700',
+                RECHAZADO: 'bg-red-100 text-red-700',
+                COMPRADO: 'bg-purple-100 text-purple-700',
+                CANCELADO: 'bg-slate-200 text-slate-600',
+                EXTRA: 'bg-orange-100 text-orange-700'
+            };
+            return map[ev] || 'bg-slate-100 text-slate-500';
+        };
+
+        tbody.innerHTML = logs.map(l => {
+            const fecha = new Date(l.timestamp);
+            const fStr = isNaN(fecha) ? String(l.timestamp) : formatDateHuman(fecha.toISOString()) + ' ' + fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+            const msgLimpio = String(l.mensaje || '').replace(/\*/g, '').replace(/\n/g, ' ').trim();
+            const msgCorto = msgLimpio.substring(0, 100) + (msgLimpio.length > 100 ? '...' : '');
+            return `<tr class="hover:bg-slate-50 transition">
+      <td class="px-4 py-2.5 text-[10px] text-slate-500 whitespace-nowrap">${fStr}</td>
+      <td class="px-4 py-2.5 text-xs font-bold text-slate-800">${l.nombre || '—'}</td>
+      <td class="px-4 py-2.5 text-[10px] font-mono text-slate-500">${l.telefono}</td>
+      <td class="px-4 py-2.5"><span class="status-badge ${eventoBadge(l.evento)}">${l.evento || '—'}</span></td>
+      <td class="px-4 py-2.5 font-mono text-[10px] text-slate-500 cursor-pointer hover:text-pink-600" onclick="openDetalles('${l.idTicket}')">${l.idTicket || '—'}</td>
+      <td class="px-4 py-2.5 text-xs font-bold text-slate-700">${l.enviadoPor}</td>
+      <td class="px-4 py-2.5 text-[10px] font-bold ${l.status === 'OK' ? 'text-emerald-600' : l.status && l.status.includes('error') ? 'text-red-600' : 'text-amber-600'}">${l.status || '—'}</td>
+      <td class="px-4 py-2.5 text-[10px] text-slate-500 max-w-xs truncate" title="${msgLimpio}">${msgCorto}</td>
+    </tr>`;
+        }).join('');
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // REPORTE DETALLADO POR PASAJERO
+    // ─────────────────────────────────────────────────────────────────────────────
+    let rpDetDatos = [];
+
+    function initReporteDetallado() {
+        // Poblar empresa select
+        const sel = document.getElementById('rpdet-empresa');
+        if (sel && sel.options.length <= 1 && localData.companies?.length > 0) {
+            localData.companies.sort((a, b) => a.nombre.localeCompare(b.nombre))
+                .forEach(c => sel.add(new Option(c.nombre, c.id)));
+        }
+        // Prefill fechas últimos 3 meses
+        const hoy = new Date();
+        const desde = new Date(hoy); desde.setMonth(desde.getMonth() - 3);
+        const pad = n => String(n).padStart(2, '0');
+        const fmtD = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        if (!document.getElementById('rpdet-desde').value) document.getElementById('rpdet-desde').value = fmtD(desde);
+        if (!document.getElementById('rpdet-hasta').value) document.getElementById('rpdet-hasta').value = fmtD(hoy);
+    }
+
+    window.loadReporteDetallado = async () => {
+        const desde = document.getElementById('rpdet-desde').value;
+        const hasta = document.getElementById('rpdet-hasta').value;
+        const empresa = document.getElementById('rpdet-empresa').value;
+
+        showLoading('Generando reporte...');
+        const res = await apiCall('getReporteDetallado', { desde, hasta, empresa });
+        hideLoading();
+
+        if (res.status !== 'success') {
+            Toast.fire({ text: res.message || 'Error', icon: 'error' });
+            return;
+        }
+
+        rpDetDatos = res.data.filas || [];
+
+        if (rpDetDatos.length === 0) {
+            document.getElementById('rpdet-tabla').classList.add('hidden');
+            document.getElementById('rpdet-count').classList.add('hidden');
+            document.getElementById('rpdet-empty').classList.remove('hidden');
+            document.getElementById('rpdet-empty').innerText = 'Sin datos para el rango seleccionado.';
+            return;
+        }
+
+        document.getElementById('rpdet-empty').classList.add('hidden');
+        document.getElementById('rpdet-count').classList.remove('hidden');
+        document.getElementById('rpdet-count').innerText = rpDetDatos.length + ' registros';
+        document.getElementById('rpdet-tabla').classList.remove('hidden');
+
+        document.getElementById('rpdet-body').innerHTML = rpDetDatos.map(f => {
+            const fechaSol = f.fechaSol ? formatDateHuman(new Date(f.fechaSol).toISOString()) : '—';
+            const nac = f.nacimiento ? formatDateHuman(f.nacimiento) : '—';
+            const salida = f.fechaSalida ? formatDateHuman(f.fechaSalida) : '—';
+            const regreso = f.fechaRegreso ? formatDateHuman(f.fechaRegreso) : '—';
+            return `<tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openDetalles('${f.idTicket}')">
+      <td class="px-3 py-2 font-bold text-slate-800">${f.pasajero}</td>
+      <td class="px-3 py-2 text-slate-500">${fechaSol}</td>
+      <td class="px-3 py-2 text-slate-500">${nac}</td>
+      <td class="px-3 py-2 font-mono text-[10px] text-slate-400">${f.idTicket}</td>
+      <td class="px-3 py-2 font-mono font-bold text-pink-600">${f.pnr || '—'}</td>
+      <td class="px-3 py-2 text-slate-700 font-bold">${f.aerolinea || '—'}</td>
+      <td class="px-3 py-2 text-slate-500">${salida}</td>
+      <td class="px-3 py-2 text-slate-500">${regreso}</td>
+      <td class="px-3 py-2 font-bold text-slate-700">${f.ruta || '—'}</td>
+      <td class="px-3 py-2 text-right text-slate-700">${formatCurrency(f.subtotal)}</td>
+      <td class="px-3 py-2 text-right text-slate-500">${formatCurrency(f.comision)}</td>
+      <td class="px-3 py-2 text-right font-black text-slate-800">${formatCurrency(f.total)}</td>
+    </tr>`;
+        }).join('');
+    };
+
+    window.exportarCSVDetallado = () => {
+        if (!rpDetDatos.length) return Toast.fire({ text: 'Primero genera el reporte.', icon: 'warning' });
+        const esc = v => { const s = String(v === null || v === undefined ? '' : v); return s.includes(',') ? '"' + s.replace(/"/g, '""') + '"' : s; };
+        const enc = ['Pasajero', 'Fecha Solicitud', 'Fecha Nacimiento', 'REQ', 'Clave', 'Aerolínea', 'Salida', 'Regreso', 'Ruta', 'Subtotal', 'Comisión', 'Total', 'Empresa'];
+        const filas = rpDetDatos.map(f => {
+            const fechaSol = f.fechaSol ? new Date(f.fechaSol).toLocaleDateString('es-MX') : '';
+            const nac = f.nacimiento ? formatToDateInput(f.nacimiento) : '';
+            const salida = f.fechaSalida ? formatToDateInput(f.fechaSalida) : '';
+            const regreso = f.fechaRegreso ? formatToDateInput(f.fechaRegreso) : '';
+            return [f.pasajero, fechaSol, nac, f.idTicket, f.pnr, f.aerolinea, salida, regreso, f.ruta,
+            f.subtotal.toFixed(2), f.comision.toFixed(2), f.total.toFixed(2), f.empresa
+            ].map(esc).join(',');
+        });
+        const csv = [enc.join(','), ...filas].join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `reporte_detallado_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        Toast.fire({ text: 'CSV descargado', icon: 'success', timer: 1500, showConfirmButton: false, toast: true, position: 'bottom-end' });
+    };
+</script>
