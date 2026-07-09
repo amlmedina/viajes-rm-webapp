@@ -695,17 +695,22 @@
 
                         // Card: flex row - flights left, price right
                         html += '<div id="card-' + pairIds + '" class="border ' + pairBorder + ' rounded-lg relative transition opt-card flex flex-col md:flex-row" ' + (isSelectable ? 'onclick="selectAdminOption(\'' + svcId + '\',\'' + pairIds + '\')"' : '') + '>';
-                        html += '<div class="hidden check-icon absolute top-1.5 left-1.5 w-5 h-5 bg-pink-600 text-white rounded-full flex items-center justify-center text-[9px] font-black z-10">✓</div>';
+                        const checkIconBg = anyAprobado ? 'bg-emerald-500 flex shadow-md' : 'bg-pink-600 hidden check-icon';
+                        html += '<div class="' + checkIconBg + ' absolute -top-2 -left-2 w-6 h-6 text-white rounded-full items-center justify-center text-[10px] font-black z-10">✓</div>';
+
+                        // Badges inline
+                        const statusBadgeIda = oIda && (oIda[6] === 'Autorizada' || oIda[6] === 'Comprado') ? '<span class="text-[7px] font-black bg-emerald-500 text-white px-1.5 py-0.5 rounded-full ml-1">✓ ' + oIda[6] + '</span>' : (oIda && oIda[6] === 'Rechazada' ? '<span class="text-[7px] font-black bg-red-100 text-red-400 px-1.5 py-0.5 rounded-full ml-1">' + oIda[6] + '</span>' : '');
+                        const statusBadgeReg = oReg && (oReg[6] === 'Autorizada' || oReg[6] === 'Comprado') ? '<span class="text-[7px] font-black bg-emerald-500 text-white px-1.5 py-0.5 rounded-full ml-1">✓ ' + oReg[6] + '</span>' : (oReg && oReg[6] === 'Rechazada' ? '<span class="text-[7px] font-black bg-red-100 text-red-400 px-1.5 py-0.5 rounded-full ml-1">' + oReg[6] + '</span>' : '');
 
                         // Left: IDA + REG side by side
-                        html += '<div class="flex-1 flex flex-col md:flex-row">';
+                        html += '<div class="flex-1 flex flex-col md:flex-row pl-5">';
                         if (oIda) {
                             const pi2 = parseOptDesc(oIda[2]);
                             html += '<div class="flex-1 px-2.5 py-1.5 ' + (oReg ? 'md:border-r border-b md:border-b-0 border-slate-100' : '') + '">';
                             html += '<div class="text-[7px] font-black text-emerald-600 mb-0.5">→ IDA</div>';
                             html += '<div class="text-[11px] font-black text-slate-800">' + pi2.aerolinea + ' <span class="font-mono text-slate-400 text-[9px]">' + pi2.vuelo + '</span></div>';
                             html += '<div class="text-[10px] text-slate-500">' + (pi2.fecha || '').trim() + ' · ' + pi2.horario + '</div>';
-                            html += '<div class="font-mono text-[9px] ' + (pi2.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + pi2.pnr + '</div>';
+                            html += '<div class="font-mono text-[9px] ' + (pi2.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black flex items-center">' + pi2.pnr + statusBadgeIda + '</div>';
                             if (oIda[8]) html += `<button onclick="event.stopPropagation();showOptImage('${oIda[8]}')" class="mt-1 text-[8px] font-black bg-pink-50 text-pink-600 border border-pink-200 px-2 py-0.5 rounded-full hover:bg-pink-100 transition shadow-sm">📷 Ver Foto</button>`;
                             html += '</div>';
                         }
@@ -715,7 +720,7 @@
                             html += '<div class="text-[7px] font-black text-indigo-600 mb-0.5">← REG</div>';
                             html += '<div class="text-[11px] font-black text-slate-800">' + pr.aerolinea + ' <span class="font-mono text-slate-400 text-[9px]">' + pr.vuelo + '</span></div>';
                             html += '<div class="text-[10px] text-slate-500">' + (pr.fecha || '').trim() + ' · ' + pr.horario + '</div>';
-                            html += '<div class="font-mono text-[9px] ' + (pr.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + pr.pnr + '</div>';
+                            html += '<div class="font-mono text-[9px] ' + (pr.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black flex items-center">' + pr.pnr + statusBadgeReg + '</div>';
                             if (oReg[8]) html += `<button onclick="event.stopPropagation();showOptImage('${oReg[8]}')" class="mt-1 text-[8px] font-black bg-pink-50 text-pink-600 border border-pink-200 px-2 py-0.5 rounded-full hover:bg-pink-100 transition shadow-sm">📷 Ver Foto</button>`;
                             html += '</div>';
                         }

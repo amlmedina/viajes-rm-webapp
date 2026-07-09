@@ -181,7 +181,8 @@ export async function handleAuthorizeOptions(authParams: any, data: any) {
   if (!userAuth) return { status: 'error', message: 'Sesión inválida.' };
 
   try {
-    const { idTicket, optionIds } = data; // optionIds: string[]
+    const { idTicket, optionIds, idOpcionesElegidas, seleccion } = data; // optionIds: string[]
+    const finalOptionIds = optionIds || idOpcionesElegidas || seleccion || [];
     const rows = await getSheetData('Opciones_Cotizacion');
 
     for (let i = 0; i < rows.length; i++) {
@@ -189,7 +190,7 @@ export async function handleAuthorizeOptions(authParams: any, data: any) {
       const ticketId = String(rows[i][0] || '').trim();
       if (ticketId !== String(idTicket)) continue;
 
-      const newStatus = optionIds && optionIds.includes(idOp) ? 'Autorizada' : 'Rechazada';
+      const newStatus = finalOptionIds.includes(idOp) ? 'Autorizada' : 'Rechazada';
       await updateCell('Opciones_Cotizacion', i + 2, 7, newStatus);
     }
 
