@@ -448,6 +448,17 @@
     // ─────────────────────────────────────────────────────────────────────────────
     // DETALLES DEL TICKET
     // ─────────────────────────────────────────────────────────────────────────────
+    window.showOptImage = (url) => {
+        Swal.fire({
+            imageUrl: url,
+            imageAlt: 'Imagen adjunta',
+            width: '80%',
+            showCloseButton: true,
+            showConfirmButton: false,
+            customClass: { popup: 'rounded-2xl' }
+        });
+    };
+
     window.openDetalles = async (idTicket) => {
         showLoading("Descargando ticket...");
         const res = await apiCall('getTicketDetails', { idTicket });
@@ -695,6 +706,7 @@
                             html += '<div class="text-[11px] font-black text-slate-800">' + pi2.aerolinea + ' <span class="font-mono text-slate-400 text-[9px]">' + pi2.vuelo + '</span></div>';
                             html += '<div class="text-[10px] text-slate-500">' + (pi2.fecha || '').trim() + ' · ' + pi2.horario + '</div>';
                             html += '<div class="font-mono text-[9px] ' + (pi2.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + pi2.pnr + '</div>';
+                            if (oIda[8]) html += `<button onclick="event.stopPropagation();showOptImage('${oIda[8]}')" class="mt-1 text-[8px] font-black bg-pink-50 text-pink-600 border border-pink-200 px-2 py-0.5 rounded-full hover:bg-pink-100 transition shadow-sm">📷 Ver Foto</button>`;
                             html += '</div>';
                         }
                         if (oReg) {
@@ -704,6 +716,7 @@
                             html += '<div class="text-[11px] font-black text-slate-800">' + pr.aerolinea + ' <span class="font-mono text-slate-400 text-[9px]">' + pr.vuelo + '</span></div>';
                             html += '<div class="text-[10px] text-slate-500">' + (pr.fecha || '').trim() + ' · ' + pr.horario + '</div>';
                             html += '<div class="font-mono text-[9px] ' + (pr.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + pr.pnr + '</div>';
+                            if (oReg[8]) html += `<button onclick="event.stopPropagation();showOptImage('${oReg[8]}')" class="mt-1 text-[8px] font-black bg-pink-50 text-pink-600 border border-pink-200 px-2 py-0.5 rounded-full hover:bg-pink-100 transition shadow-sm">📷 Ver Foto</button>`;
                             html += '</div>';
                         }
                         html += '</div>';
@@ -749,7 +762,9 @@
                         html += '<div class="text-[10px] text-slate-500">';
                         if (p.horario) html += p.horario + ' ';
                         if (p.pnr) html += '<span class="font-mono ' + (p.pnr === 'PENDIENTE' ? 'text-amber-500' : 'text-pink-600') + ' font-black">' + p.pnr + '</span> ';
-                        html += statusBadge + '</div></div>';
+                        html += statusBadge + '</div>';
+                        if (o[8]) html += `<button onclick="event.stopPropagation();showOptImage('${o[8]}')" class="mt-1 text-[8px] font-black bg-pink-50 text-pink-600 border border-pink-200 px-2 py-0.5 rounded-full hover:bg-pink-100 transition shadow-sm">📷 Ver Foto</button>`;
+                        html += '</div>';
                         // Right: price
                         html += '<div class="bg-slate-50 px-3 py-2 md:py-1.5 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-slate-100 md:min-w-[100px] shrink-0 gap-1">';
                         html += '<div class="text-[8px] text-slate-400">Sub ' + formatCurrency(subSingle) + '</div>';
