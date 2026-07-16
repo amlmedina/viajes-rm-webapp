@@ -27,6 +27,7 @@ import {
   handleUpdatePassengers,
   handleUpdateTicketEvento,
 } from './handlers/writers';
+import { handleExportarALegacy } from './handlers/orbix';
 import {
   handleGetConfigWA,
   handleGetContactosNotificacion,
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
       case 'cambiarEstado':        return NextResponse.json(await handleCambiarEstado(auth, body));
       case 'cancelRequest':        return NextResponse.json(await handleCancelRequest(auth, body));
       case 'markPurchased':        return NextResponse.json(await handleMarkPurchased(auth, body));
+      case 'exportarALegacy':      return NextResponse.json(await handleExportarALegacy(auth, body));
 
       // ── Solicitudes ───────────────────────────────────────────────────────
       case 'createRequest':        return NextResponse.json(await handleCreateRequest(auth, body));
