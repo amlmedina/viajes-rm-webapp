@@ -439,11 +439,12 @@ export async function handleCambiarEstado(authParams: any, data: any) {
   if (!userAuth) return { status: 'error', message: 'Sesión inválida.' };
 
   try {
-    const { idTicket, estado, motivo } = data;
+    const { idTicket, estado, nuevoEstado, motivo } = data;
+    const finalEstado = estado || nuevoEstado;
     const rows = await getSheetData('Solicitudes');
     for (let i = 0; i < rows.length; i++) {
       if (String(rows[i][0]) === String(idTicket)) {
-        await updateCell('Solicitudes', i + 2, 5, estado);
+        await updateCell('Solicitudes', i + 2, 5, finalEstado);
         if (motivo) await updateCell('Solicitudes', i + 2, 6, motivo);
         break;
       }

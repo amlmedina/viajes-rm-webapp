@@ -41,7 +41,7 @@ export async function handleExportarALegacy(authParams: any, data: any) {
   const ticket = solicitudes.find(row => String(row[0]) === String(idTicket));
   if (!ticket) return { status: 'error', message: 'Ticket no encontrado.' };
 
-  const allServicios = await getSheetData('Servicios');
+  const allServicios = await getSheetData('Servicios_Detalle');
   const servicios = allServicios.filter(s => String(s[0]) === String(idTicket));
 
   const allPasajeros = await getSheetData('Pasajeros');
