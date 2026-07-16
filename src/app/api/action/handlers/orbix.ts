@@ -48,9 +48,10 @@ export async function handleExportarALegacy(authParams: any, data: any) {
   const pasajeros = allPasajeros.filter(p => String(p[0]) === String(idTicket));
 
   const allOpciones = await getSheetData('Opciones_Cotizacion');
-  const opcionesCompradas = allOpciones.filter(o => 
-    String(o[0]) === String(idTicket) && (o[6] === 'Comprado' || o[6] === 'Extra' || o[6] === 'Autorizada')
-  );
+  const opcionesCompradas = allOpciones.filter(o => {
+    const estado = String(o[6] || '').trim();
+    return String(o[0]).trim() === String(idTicket).trim() && (estado === 'Comprado' || estado === 'Extra' || estado === 'Autorizada');
+  });
 
   if (opcionesCompradas.length === 0) return { status: 'error', message: 'No hay opciones compradas para exportar.' };
 

@@ -190,6 +190,9 @@ export async function handleAuthorizeOptions(authParams: any, data: any) {
       const ticketId = String(rows[i][0] || '').trim();
       if (ticketId !== String(idTicket)) continue;
 
+      const currentState = String(rows[i][6] || '').trim();
+      if (currentState === 'Extra' || currentState === 'Eliminado') continue;
+
       const newStatus = finalOptionIds.includes(idOp) ? 'Autorizada' : 'Rechazada';
       await updateCell('Opciones_Cotizacion', i + 2, 7, newStatus);
     }
