@@ -690,7 +690,7 @@
                         var costoI = oIda ? Number(oIda[3] || 0) : 0, costoR = oReg ? Number(oReg[3] || 0) : 0;
                         var feePair = feeI + feeR, costoPair = costoI + costoR;
                         var subPair = costoPair + feePair;
-                        var ivaPair = _aplicaIVA ? subPair * 0.16 : 0;
+                        var ivaPair = Math.abs(totPair - subPair) > 1 ? totPair - subPair : 0;
                         var totalConIva = subPair + ivaPair;
 
                         // Card: flex row - flights left, price right
@@ -730,7 +730,8 @@
                         html += '<div class="bg-slate-50 px-3 py-2 md:py-1.5 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-slate-100 md:min-w-[120px] shrink-0 gap-1">';
                         html += '<div class="text-[8px] text-slate-400 font-bold">Sub ' + formatCurrency(subPair) + '</div>';
                         html += '<div class="text-[8px] text-slate-400 font-bold">Fee ' + formatCurrency(feePair) + '</div>';
-                        if (_aplicaIVA) html += '<div class="text-[8px] text-slate-400 font-bold">IVA ' + formatCurrency(ivaPair) + '</div>';
+                        if (ivaPair > 0) html += '<div class="text-[8px] text-slate-400 font-bold">IVA ' + formatCurrency(ivaPair) + '</div>';
+                        else html += '<span class="text-[6px] font-black bg-amber-100 text-amber-600 px-1 py-0.5 rounded">SIN IVA</span>';
                         html += '<div class="font-black ' + (anyAprobado ? 'text-emerald-600' : 'text-slate-800') + ' text-base md:text-sm mt-0.5">' + formatCurrency(totalConIva) + '</div>';
                         html += '</div></div>';
                     }
@@ -751,8 +752,8 @@
                         const confidencial = (session.role === 'super' && o[9] && Number(o[9]) > 0) ? '<span class="text-[8px] text-red-500 font-bold ml-2">[Prov: ' + formatCurrency(Number(o[9])) + ']</span>' : '';
 
                         var subSingle = c + f;
-                        var ivaSingle = _aplicaIVA ? subSingle * 0.16 : 0;
-                        var totSingle = subSingle + ivaSingle;
+                        var ivaSingle = Math.abs(tot - subSingle) > 1 ? tot - subSingle : 0;
+                        var totalConIva = subSingle + ivaSingle;
 
                         const activeCheck = isAprobado ? 'flex shadow-md' : 'hidden check-icon';
                         const checkBg = isAprobado ? 'bg-emerald-500' : 'bg-pink-600';
@@ -774,8 +775,9 @@
                         html += '<div class="bg-slate-50 px-3 py-2 md:py-1.5 flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-slate-100 md:min-w-[100px] shrink-0 gap-1">';
                         html += '<div class="text-[8px] text-slate-400">Sub ' + formatCurrency(subSingle) + '</div>';
                         html += '<div class="text-[8px] text-slate-400">Fee ' + formatCurrency(f) + '</div>';
-                        if (_aplicaIVA) html += '<div class="text-[8px] text-slate-400">IVA ' + formatCurrency(ivaSingle) + '</div>';
-                        html += '<div class="font-black ' + (isAprobado ? 'text-emerald-600' : 'text-slate-800') + ' text-base md:text-sm">' + formatCurrency(totSingle) + '</div>';
+                        if (ivaSingle > 0) html += '<div class="text-[8px] text-slate-400">IVA ' + formatCurrency(ivaSingle) + '</div>';
+                        else html += '<span class="text-[6px] font-black bg-amber-100 text-amber-600 px-1 py-0.5 mt-1 rounded">SIN IVA</span>';
+                        html += '<div class="font-black ' + (isAprobado ? 'text-emerald-600' : 'text-slate-800') + ' text-base md:text-sm">' + formatCurrency(totalConIva) + '</div>';
                         html += confidencial + '</div>';
                         if (canReject) html += '<button onclick="event.stopPropagation();rechazarOpcionIndividual(\'' + o[1] + '\')" class="absolute top-1 right-1 text-[7px] font-black text-red-300 hover:text-red-600 transition">✕</button>';
                         html += '</div>';

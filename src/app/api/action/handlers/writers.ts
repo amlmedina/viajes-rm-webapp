@@ -322,7 +322,7 @@ export async function handleAjustarPrecio(authParams: any, data: any) {
 
     for (const ajuste of ajustes) {
       for (let i = 0; i < rows.length; i++) {
-        if (String(rows[i][0]) === String(ajuste.idOpcion)) {
+        if (String(rows[i][1]).trim() === String(ajuste.idOpcion).trim()) {
           await updateCell('Opciones_Cotizacion', i + 2, 4, ajuste.nuevoCosto);
           await updateCell('Opciones_Cotizacion', i + 2, 5, ajuste.nuevoFee);
           await updateCell('Opciones_Cotizacion', i + 2, 6, ajuste.nuevoTotal);
