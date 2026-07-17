@@ -111,13 +111,13 @@ export async function handleSaveAllOptions(authParams: any, data: any) {
         idTicket,
         idOpcion,
         op.desc || '',
-        op.costo || 0,
-        op.fee || 0,
-        op.total || 0,
+        Number(op.costo) || 0,
+        Number(op.fee) || 0,
+        Number(op.total) || 0,
         'Propuesta',
         op.idServicio || '',
         op.img || '',
-        op.costoProveedor || 0,
+        Number(op.costoProveedor) || 0,
         timestamp
       ];
 
@@ -323,9 +323,9 @@ export async function handleAjustarPrecio(authParams: any, data: any) {
     for (const ajuste of ajustes) {
       for (let i = 0; i < rows.length; i++) {
         if (String(rows[i][1]).trim() === String(ajuste.idOpcion).trim()) {
-          await updateCell('Opciones_Cotizacion', i + 2, 4, ajuste.nuevoCosto);
-          await updateCell('Opciones_Cotizacion', i + 2, 5, ajuste.nuevoFee);
-          await updateCell('Opciones_Cotizacion', i + 2, 6, ajuste.nuevoTotal);
+          await updateCell('Opciones_Cotizacion', i + 2, 4, Number(ajuste.nuevoCosto) || 0);
+          await updateCell('Opciones_Cotizacion', i + 2, 5, Number(ajuste.nuevoFee) || 0);
+          await updateCell('Opciones_Cotizacion', i + 2, 6, Number(ajuste.nuevoTotal) || 0);
           // Removed status reset to 'Pendiente' to maintain 'Autorizada'
           break;
         }

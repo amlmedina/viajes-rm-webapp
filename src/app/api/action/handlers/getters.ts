@@ -134,8 +134,11 @@ export async function handleGetDashboard(authParams: any) {
   });
 
   const solicitudesMap: Record<string, boolean> = {};
-  solicitudes.forEach(s => { solicitudesMap[s[0]] = true; });
-  const serviciosResumen = servicios.filter(s => solicitudesMap[s[0]]);
+  solicitudes.forEach(s => { 
+    const tkId = String(s[0] || '').trim();
+    if (tkId) solicitudesMap[tkId] = true; 
+  });
+  const serviciosResumen = servicios.filter(s => solicitudesMap[String(s[0] || '').trim()]);
 
   const pasajeros = await getSheetData('Pasajeros');
   const pasajerosResumen: Record<string, string[]> = {};
@@ -189,7 +192,7 @@ export async function handleGetTicketDetails(authParams: any, data: any) {
 
   const servicios = (await getSheetData('Servicios_Detalle')).filter(s => String(s[0]) === String(idTicket));
   const pasajeros = (await getSheetData('Pasajeros')).filter(p => String(p[0]) === String(idTicket));
-  const opciones = (await getSheetData('Opciones_Cotizacion')).filter(o => String(o[0]) === String(idTicket));
+  const opciones = (await getSheetData('Opciones_Cotizacion')).filter(o => String(o[0]) === String(idTicket) && String(o[6] || '').trim() !== 'Eliminado');
 
   const politica = await getPoliticaEmpresa(empId);
 
@@ -238,7 +241,8 @@ export async function handleGetCatalogos(authParams: any) {
   const paxsFinales: any[] = [];
 
   pasajeros.forEach(p => {
-    const idTicket = p[0];
+    const idTicket = String(p[0] || '').trim();
+    if (!idTicket) return;
     const empTicket = ticketEmpresa[idTicket] || '';
     if (isViajeroOrAdmin && empTicket !== userEmp) return;
 
@@ -302,7 +306,10 @@ export async function handleGetFinanzas(authParams: any) {
   if (!userAuth) return { status: 'error', message: 'Sesión inválida.' };
 
   const companiesMap = await getCompaniesMap();
-  let solicitudes = (await getSheetData('Solicitudes')).filter(s => s[4] === 'Autorizado' || s[4] === 'Comprado');
+  let solicitudes = (await getSheetData('Solicitudes')).filter(s => {
+    const st = String(s[4] || '').trim();
+    return st === 'Autorizado' || st === 'Comprado';
+  });
 
   if (userAuth.role === 'admin') {
     const empUser = String(userAuth.empresa || '').toLowerCase().trim();
