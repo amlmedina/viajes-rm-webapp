@@ -241,19 +241,20 @@
             'Numero de viajero frecuente', 'Tipo de asiento', 'Equipaje',
             'Tipo',
             'Aerolínea Ida', 'Número Vuelo Ida', 'Origen Ida', 'Destino Ida', 'Fecha Salida Ida', 'Hora Salida Ida', 'Hora Llegada Ida', 'PNR Ida', 'Tarifa Ida',
-            'Aerolínea Regreso', 'Número Vuelo Regreso', 'Fecha Salida Regreso', 'Hora Salida Regreso', 'Hora Llegada Regreso', 'PNR Regreso', 'Tarifa Regreso'
+            'Aerolínea Regreso', 'Número Vuelo Regreso', 'Fecha Salida Regreso', 'Hora Salida Regreso', 'Hora Llegada Regreso', 'PNR Regreso', 'Tarifa Regreso',
+            'Comentarios'
         ];
         const exIda = [
             "Juan", "Pérez", "Gómez", "1990-05-20", "AM12345", "Pasillo", "Solo Artículo Personal",
             "Sencillo",
-            "Aeroméxico", "AM123", "CDMX", "Cancún", "2025-10-15", "08:00", "10:15", "ABCDEF", "",
-            "", "", "", "", "", "", ""
+            "Aeroméxico", "AM123", "CDMX", "Cancún", "2025-10-15", "08:00", "10:15", "ABCDEF", "Económica",
+            "", "", "", "", "", "", "", "Sin comentarios extra"
         ];
         const exRedondo = [
             "María", "López", "Ruiz", "1985-03-12", "", "Ventana", "Maleta 23kg",
             "Redondo",
-            "Aeroméxico", "AM456", "MTY", "CDMX", "2025-11-01", "07:00", "08:30", "XYZ123", "",
-            "Aeroméxico", "AM789", "2025-11-05", "18:00", "19:30", "XYZ456", ""
+            "Aeroméxico", "AM456", "MTY", "CDMX", "2025-11-01", "07:00", "08:30", "XYZ123", "AM Plus",
+            "Aeroméxico", "AM789", "2025-11-05", "18:00", "19:30", "XYZ456", "Clase Premier", ""
         ];
         const data = [headers, exIda, exRedondo];
         
@@ -463,17 +464,21 @@
                 const pnrReg  = row['PNR Regreso']           || '';
                 const tarReg  = row['Tarifa Regreso']        || '';
 
+                const comentarios = row['Comentarios'] || '';
+
                 // Formato que espera el parser de Scripts_cotizar.html:
                 // "Vuelo Redondo | Ida: HH:MM | Regreso: HH:MM"
                 // (para redondo) o "Vuelo Sencillo" (para sencillo)
                 let detallesTecnicos;
                 if (esRedondo) {
                     detallesTecnicos = `Vuelo Redondo | Ida: ${hSalIda} - ${hLlgIda} | Regreso: ${hSalReg} - ${hLlgReg}`
-                        + ` | Aerolinea Ida: ${aerIda} | Num Vuelo Ida: ${numIda} | PNR Ida: ${pnrIda}`
-                        + ` | Aerolinea Regreso: ${aerReg} | Num Vuelo Regreso: ${numReg} | PNR Regreso: ${pnrReg}`;
+                        + ` | Aerolinea Ida: ${aerIda} | Num Vuelo Ida: ${numIda} | PNR Ida: ${pnrIda} | Tarifa Ida: ${tarIda}`
+                        + ` | Aerolinea Regreso: ${aerReg} | Num Vuelo Regreso: ${numReg} | PNR Regreso: ${pnrReg} | Tarifa Regreso: ${tarReg}`
+                        + (comentarios ? ` | Comentarios: ${comentarios}` : '');
                 } else {
                     detallesTecnicos = `Vuelo Sencillo | Ida: ${hSalIda} - ${hLlgIda}`
-                        + ` | Aerolinea: ${aerIda} | Num Vuelo: ${numIda} | PNR: ${pnrIda}`;
+                        + ` | Aerolinea: ${aerIda} | Num Vuelo: ${numIda} | PNR: ${pnrIda} | Tarifa: ${tarIda}`
+                        + (comentarios ? ` | Comentarios: ${comentarios}` : '');
                 }
 
                 const payload = {

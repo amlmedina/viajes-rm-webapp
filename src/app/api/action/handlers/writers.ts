@@ -230,11 +230,11 @@ export async function handleRejectOptions(authParams: any, data: any) {
       await updateCell('Opciones_Cotizacion', i + 2, 7, 'Rechazada');
     }
 
-    // Ticket back to Cotizado (or Pendiente depending on flow)
+    // Ticket back to Pendiente
     const solicitudes = await getSheetData('Solicitudes');
     for (let i = 0; i < solicitudes.length; i++) {
       if (String(solicitudes[i][0]) === String(idTicket)) {
-        await updateCell('Solicitudes', i + 2, 5, 'Cotizado');
+        await updateCell('Solicitudes', i + 2, 5, 'Pendiente');
         if (motivo) await updateCell('Solicitudes', i + 2, 6, motivo);
         break;
       }
