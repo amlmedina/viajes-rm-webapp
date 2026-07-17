@@ -453,11 +453,16 @@
                   ${cell('Destino Ida')}
                   ${cell('Fecha Salida Ida')}
                   ${cell('PNR Ida', 'font-mono font-bold')}
+                  ${cell('Tarifa Ida')}
                   ${esRedondo ? `
                   ${cell('Aerolínea Regreso', 'text-indigo-600')}
                   ${cell('Fecha Salida Regreso', 'text-indigo-600')}
                   ${cell('PNR Regreso', 'text-indigo-600 font-mono font-bold')}
-                  ` : '<td colspan="3" class="px-3 py-2 text-slate-200 text-center text-[9px] italic">&#8212; solo ida &#8212;</td>'}
+                  ${cell('Tarifa Regreso', 'text-indigo-600')}
+                  ` : '<td colspan="4" class="px-3 py-2 text-slate-200 text-center text-[9px] italic">&#8212; solo ida &#8212;</td>'}
+                  <td class="px-2 py-2">
+                    ${row['Comentarios'] ? `<span class="bg-amber-100 text-amber-800 text-[9px] font-bold px-2 py-1 rounded-md" title="${row['Comentarios'].replace(/"/g, '&quot;')}">Ver Comentario</span>` : '<span class="text-slate-300">-</span>'}
+                  </td>
                 </tr>
             `;
         }).join('');
