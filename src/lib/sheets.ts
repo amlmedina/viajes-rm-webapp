@@ -54,8 +54,9 @@ export async function appendRow(sheetName: string, row: any[], spreadsheetId = S
   const sheets = await getSheetsClient();
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${sheetName}!A1`,
+    range: `${sheetName}!A:A`,
     valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
   });
 }
