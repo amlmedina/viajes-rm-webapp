@@ -73,7 +73,9 @@
     // ─────────────────────────────────────────────────────────────────────────────
     // UTILIDADES
     // ─────────────────────────────────────────────────────────────────────────────
+    let _loadingTimeout = null;
     const showLoading = (txt) => {
+        if (_loadingTimeout) { clearTimeout(_loadingTimeout); _loadingTimeout = null; }
         document.getElementById('loading-text').innerText = txt;
         document.getElementById('loading-overlay').classList.remove('hidden', 'opacity-0');
     };
@@ -82,7 +84,8 @@
         const el = document.getElementById('loading-overlay');
         if (!el) { console.error('[DEBUG] loading-overlay NOT FOUND!'); return; }
         el.classList.add('opacity-0');
-        setTimeout(() => el.classList.add('hidden'), 300);
+        if (_loadingTimeout) clearTimeout(_loadingTimeout);
+        _loadingTimeout = setTimeout(() => el.classList.add('hidden'), 300);
     };
 
     function parseDateObj(val) {

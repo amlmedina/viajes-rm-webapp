@@ -573,9 +573,8 @@
             console.error("Error sending bulk notification:", e);
         }
 
-        hideLoading();
         window.hideBulkUploadScreen();
-        forceRefresh();
+        await forceRefresh();
         
         Swal.fire({
             title: 'Carga Completada',
