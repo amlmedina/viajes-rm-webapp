@@ -148,6 +148,9 @@
         if (res.status === 'success') {
             await refreshDashboardSilencioso();
             await openDetalles(idTicketEnFoco);
+            if (nuevoEstado === 'Comprado' && typeof window.exportarALegacy === 'function') {
+                setTimeout(() => { window.exportarALegacy(); }, 500);
+            }
         } else Toast.fire({ text: res.message, icon: 'error' });
     };
 
