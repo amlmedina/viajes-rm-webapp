@@ -295,30 +295,71 @@
     // Try to normalize a date string to YYYY-MM-DD
     function normalizeDate(val) {
         if (!val) return '';
-        const s = String(val).trim();
+        let s = String(val).trim();
+        
+        // Remove time portion if present (e.g. "2025-10-15 14:00" or "15/10/2025T00:00")
+        s = s.split(/[\sT]/)[0];
+
         if (RX_DATE.test(s)) return s; // already correct
+        
         // Excel serial number
         if (/^\d{5}$/.test(s)) {
             const d = new Date(Math.round((Number(s) - 25569) * 86400 * 1000));
             return d.toISOString().slice(0, 10);
         }
+        
+        // YYYY/MM/DD or YYYY-MM-DD
+        const m3 = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+        if (m3) return `${m3[1]}-${m3[2].padStart(2,'0')}-${m3[3].padStart(2,'0')}`;
+
         // DD/MM/YYYY or DD-MM-YYYY
         const m1 = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
         if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-        // MM/DD/YYYY
-        const m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (m2) return `${m2[3]}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
+        
+        // DD.MM.YYYY
+        const m4 = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        if (m4) return `${m4[3]}-${m4[2].padStart(2,'0')}-${m4[1].padStart(2,'0')}`;
+        
+        // Fallback for names like "15 oct 2025"
+        const parsed = new Date(s);
+        if (!isNaN(parsed.getTime())) {
+            const y = parsed.getFullYear();
+            const m = String(parsed.getMonth() + 1).padStart(2, '0');
+            const d = String(parsed.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        
         return s; // leave as-is, will fail validation
     }
 
     // Try to normalize a time string to HH:MM
     function normalizeTime(val) {
         if (!val) return '';
-        const s = String(val).trim();
+        let s = String(val).trim();
+        
+        // Fractional Excel time (e.g. 0.333333333 for 08:00)
+        if (/^0\.\d+$/.test(s)) {
+            const totalSeconds = Math.round(Number(s) * 86400);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
+        }
+        
         if (RX_TIME.test(s)) return s;
         // H:MM or HH:MM:SS
-        const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+        const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?(?:\s?[AaPp][Mm])?$/);
         if (m) return `${m[1].padStart(2,'0')}:${m[2]}`;
+        
+        // If it looks like 12h format e.g. "8:00 PM"
+        const m12 = s.match(/^(\d{1,2}):(\d{2})\s?([AaPp][Mm])$/i);
+        if (m12) {
+            let h = parseInt(m12[1], 10);
+            const isPM = m12[3].toLowerCase() === 'pm';
+            if (isPM && h !== 12) h += 12;
+            if (!isPM && h === 12) h = 0;
+            return `${String(h).padStart(2,'0')}:${m12[2]}`;
+        }
+
         return s;
     }
 
