@@ -7,10 +7,7 @@ function _generateHexId() {
 
 function fmtShort(d: Date | null) {
   if (!d) return '';
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}-${mm}-${yy}`;
+  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
 
 function parseDateExcel(val: any) {
@@ -93,7 +90,10 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       break;
     }
   }
-  if (!emailAsignado) emailAsignado = asignadoA + '@indipris.com';
+  if (!emailAsignado) {
+    const baseName = (asignadoA || userAuth.username || solicitante || '').trim();
+    emailAsignado = baseName.includes('@') ? baseName : baseName + '@indipris.com';
+  }
 
   try {
     let contactoId = '';
@@ -150,11 +150,10 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       '',
       claves.join(' / ') || '',
       String(ticket[5] || ''),
-      '',
-      '',
-      nowFormatted,
-      idTicket,
-      ''
+      '', // 17: Generar PDF
+      nowFormatted, // 18: Fecha de creación
+      idTicket, // 19: Solicitud web
+      userAuth.username // 20: Dueño
     ], legacyId);
 
     const reservaIds: string[] = [];
