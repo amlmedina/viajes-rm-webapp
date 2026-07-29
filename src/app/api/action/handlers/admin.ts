@@ -66,37 +66,40 @@ export async function handleToggleVacaciones(auth: any, body: any) {
 }
 
 export async function handleSaveUser(auth: any, body: any) {
-  const { isNew, oldLogin, login, pass, rol, empresaIds, correo, telefono } = body;
+  if (!body.user) return { status: 'error', message: 'Datos inválidos' };
+  
+  const { usuario, passHash, role, empresaIds, email, telefono, vacaciones } = body.user;
+  const login = String(usuario || '').trim();
+  if (!login) return { status: 'error', message: 'El nombre de usuario es obligatorio' };
+
   const users = await getSheetData('Usuarios');
   const empCSV = (empresaIds || []).join(', ');
   
-  if (isNew) {
-    if (users.find(u => String(u[0]).toLowerCase() === String(login).toLowerCase())) {
-      return { status: 'error', message: 'El usuario ya existe' };
-    }
+  const rowIndex = users.findIndex(u => String(u[0]).toLowerCase() === login.toLowerCase());
+  
+  if (rowIndex === -1) {
+    // Si no existe, es un usuario nuevo
+    if (!passHash) return { status: 'error', message: 'Se requiere contraseña para nuevo usuario' };
     
-    const hash = hashPassword(pass);
     await appendRow('Usuarios', [
-      login, hash, rol, empCSV, correo, telefono, '', ''
+      login, passHash, role, empCSV, email, telefono, '', vacaciones ? 'VACACIONES' : ''
     ]);
     return { status: 'success', message: 'Usuario creado' };
   } else {
-    const rowIndex = users.findIndex(u => String(u[0]).toLowerCase() === String(oldLogin).toLowerCase());
-    if (rowIndex === -1) return { status: 'error', message: 'Usuario no encontrado' };
-    
+    // Si existe, es una actualización
     const userRow = users[rowIndex];
-    const newHash = pass ? hashPassword(pass) : userRow[1];
+    const newHash = passHash ? passHash : userRow[1]; // UI ya envía el hash
     const sheetRow = rowIndex + 2;
     
     const newRow = [
       login, 
       newHash, 
-      rol, 
+      role, 
       empCSV, 
-      correo, 
+      email, 
       telefono, 
       userRow[6] || '', 
-      userRow[7] || ''
+      vacaciones ? 'VACACIONES' : ''
     ];
     
     await updateRow('Usuarios', sheetRow, 1, newRow);
