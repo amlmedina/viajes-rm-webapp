@@ -10,6 +10,12 @@ import {
   handleGetLogsWhatsapp
 } from './handlers/getters';
 import {
+  handleGetUsuarios,
+  handleGetUsuarioDetalle,
+  handleSaveUser,
+  handleToggleVacaciones
+} from './handlers/admin';
+import {
   handleCreateRequest,
   handleSaveAllOptions,
   handleUploadFile,
@@ -63,6 +69,12 @@ export async function POST(request: Request) {
       case 'getConfigWA':               return NextResponse.json(await handleGetConfigWA(auth));
       case 'getContactosNotificacion':  return NextResponse.json(await handleGetContactosNotificacion(auth, body));
       case 'sendWhatsapp':              return NextResponse.json(await handleSendWhatsapp(auth, body));
+
+      // ── Admin / Usuarios ──────────────────────────────────────────────────
+      case 'getUsuarios':          return NextResponse.json(await handleGetUsuarios(auth));
+      case 'getUsuarioDetalle':    return NextResponse.json(await handleGetUsuarioDetalle(auth, body));
+      case 'saveUser':             return NextResponse.json(await handleSaveUser(auth, body));
+      case 'toggleVacaciones':     return NextResponse.json(await handleToggleVacaciones(auth, body));
 
       // ── Cotizaciones & Opciones ───────────────────────────────────────────
       case 'saveAllOptions':       return NextResponse.json(await handleSaveAllOptions(auth, body));

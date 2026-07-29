@@ -1,4 +1,4 @@
-import { getSheetData, getCompaniesMap } from '@/lib/sheets';
+import { getSheetData, getCompaniesMap, updateCell } from '@/lib/sheets';
 
 // Helper to authenticate user for internal API calls
 export async function authenticateUser(auth: { u: string, h: string }) {
@@ -105,5 +105,16 @@ export async function handleVerifyOTP(data: any) {
 }
 
 export async function handleResetPassword(data: any) {
-  return { status: 'error', message: 'Not implemented fully yet.' };
+  const usuario = String(data.usuario || '').trim();
+  const newPassHash = String(data.newPassHash || '').trim();
+  if (!usuario || !newPassHash) return { status: 'error', message: 'Datos incompletos.' };
+
+  const users = await getSheetData('Usuarios');
+  const rowIndex = users.findIndex(u => String(u[0] || '').toLowerCase().trim() === usuario.toLowerCase());
+  
+  if (rowIndex === -1) return { status: 'error', message: 'Usuario no encontrado.' };
+
+  await updateCell('Usuarios', rowIndex + 2, 2, newPassHash);
+
+  return { status: 'success', data: 'Contraseña actualizada.' };
 }
