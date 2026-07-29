@@ -7,7 +7,7 @@ function _generateHexId() {
 
 function fmtShort(d: Date | null) {
   if (!d) return '';
-  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
 function parseDateExcel(val: any) {
