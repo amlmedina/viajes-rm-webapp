@@ -19,14 +19,14 @@ export default function MobilePerfil() {
       
       <div className="bg-white rounded-3xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex items-center gap-4">
         <div className="h-16 w-16 bg-pink-100 text-pink-500 rounded-full flex items-center justify-center text-2xl font-black">
-          {localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).name.charAt(0).toUpperCase() : 'U'}
+          {typeof window !== 'undefined' && localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).name.charAt(0).toUpperCase() : 'U'}
         </div>
         <div>
           <h2 className="font-black text-slate-800 text-lg">
-            {localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).name : 'Usuario'}
+            {typeof window !== 'undefined' && localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).name : 'Usuario'}
           </h2>
           <p className="font-bold text-slate-400 text-sm">
-            {localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).empresa : 'Empresa'}
+            {typeof window !== 'undefined' && localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).empresa : 'Empresa'}
           </p>
         </div>
       </div>

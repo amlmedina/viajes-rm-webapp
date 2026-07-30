@@ -48,7 +48,7 @@ export default function MobileDashboard() {
           <p className="text-slate-400 font-bold text-xs">Mis solicitudes recientes</p>
         </div>
         <div className="h-10 w-10 bg-slate-200 rounded-full flex items-center justify-center font-black text-slate-500 shadow-inner">
-          {localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).name.charAt(0).toUpperCase() : 'U'}
+          {typeof window !== 'undefined' && localStorage.getItem('indipris_session_secure') ? JSON.parse(localStorage.getItem('indipris_session_secure')!).name.charAt(0).toUpperCase() : 'U'}
         </div>
       </header>
 
