@@ -63,18 +63,21 @@ export default function MobileDashboard() {
 
       {/* Bottom Sheet Overlay */}
       <div 
-        className={`fixed inset-0 bg-slate-900/40 z-50 transition-opacity duration-300 ${selectedTicket ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-slate-900/40 z-[60] transition-opacity duration-300 ${selectedTicket ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setSelectedTicket(null)}
       >
         {/* Bottom Sheet Body */}
         <div 
-          className={`absolute bottom-0 left-0 w-full bg-white rounded-t-3xl shadow-2xl transition-transform duration-300 ${selectedTicket ? 'translate-y-0' : 'translate-y-full'}`}
+          className={`absolute bottom-0 left-0 w-full bg-white rounded-t-3xl shadow-2xl transition-transform duration-300 flex flex-col max-h-[80vh] ${selectedTicket ? 'translate-y-0' : 'translate-y-full'}`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto">
-            {/* Grabber */}
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4" />
-            
+          {/* Grabber */}
+          <div className="pt-3 pb-2 shrink-0">
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto" />
+          </div>
+
+          {/* Scrollable Content */}
+          <div className="px-6 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
             {selectedTicket && (
               <>
                 <div>
@@ -102,26 +105,29 @@ export default function MobileDashboard() {
                     <span className="text-slate-800">${selectedTicket[6] || '0.00'}</span>
                   </div>
                 </div>
-
-                {selectedTicket[4] === 'Cotizado' && (
-                  <div className="grid grid-cols-2 gap-3 pt-4">
-                    <button className="bg-white border-2 border-red-500 text-red-600 font-black p-4 rounded-2xl active:scale-95 transition-transform uppercase tracking-widest text-xs">
-                      Rechazar
-                    </button>
-                    <button className="bg-emerald-500 text-white font-black p-4 rounded-2xl shadow-lg active:scale-95 transition-transform uppercase tracking-widest text-xs">
-                      Aprobar
-                    </button>
-                  </div>
-                )}
-                
-                {selectedTicket[4] !== 'Cotizado' && (
-                  <button className="w-full bg-slate-900 text-white font-black p-4 rounded-2xl shadow-lg mt-4 active:scale-95 transition-transform uppercase tracking-widest text-xs">
-                    Ver Detalles Completos
-                  </button>
-                )}
               </>
             )}
           </div>
+
+          {/* Sticky Action Buttons — always visible */}
+          {selectedTicket && (
+            <div className="px-6 pt-3 pb-6 border-t border-slate-100 bg-white shrink-0 rounded-b-none">
+              {selectedTicket[4] === 'Cotizado' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="bg-white border-2 border-red-500 text-red-600 font-black p-4 rounded-2xl active:scale-95 transition-transform uppercase tracking-widest text-xs">
+                    Rechazar
+                  </button>
+                  <button className="bg-emerald-500 text-white font-black p-4 rounded-2xl shadow-lg active:scale-95 transition-transform uppercase tracking-widest text-xs">
+                    Aprobar
+                  </button>
+                </div>
+              ) : (
+                <button className="w-full bg-slate-900 text-white font-black p-4 rounded-2xl shadow-lg active:scale-95 transition-transform uppercase tracking-widest text-xs">
+                  Ver Detalles Completos
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
