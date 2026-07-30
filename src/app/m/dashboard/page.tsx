@@ -6,6 +6,7 @@ export default function MobileDashboard() {
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
   useEffect(() => {
     const authRaw = localStorage.getItem('indipris_session_secure');
@@ -38,7 +39,6 @@ export default function MobileDashboard() {
   }
 
   const solicitudes = data?.solicitudes || [];
-  const [selectedTicket, setSelectedTicket] = useState<any>(null);
 
   return (
     <div className="p-4 space-y-6 relative overflow-hidden min-h-[calc(100vh-64px)]">
