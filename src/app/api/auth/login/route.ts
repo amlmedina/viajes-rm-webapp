@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     if (result.status === 'success') {
       const response = NextResponse.json(result);
       // Set the session cookie for Next.js Desktop Middleware
-      response.cookies.set('indipris_session', result.data.hash, {
+      response.cookies.set('indipris_session', result.data?.hash || '', {
         path: '/',
         maxAge: 60 * 60 * 24 * 30, // 30 days
         sameSite: 'lax',
