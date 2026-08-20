@@ -930,13 +930,13 @@
         hideLoading();
         
         if (res.status === 'success' && res.data) {
-            const sel = document.getElementById('config-migracion-metodo');
+            const sel = document.getElementById('migracion-metodo');
             if (sel) sel.value = res.data.metodo || 'LEGACY';
         }
     };
 
     window.saveConfigMigracion = async () => {
-        const sel = document.getElementById('config-migracion-metodo');
+        const sel = document.getElementById('migracion-metodo');
         if (!sel) return;
         
         const metodo = sel.value;

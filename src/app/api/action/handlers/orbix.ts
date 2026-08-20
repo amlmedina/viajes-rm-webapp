@@ -350,7 +350,8 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       }
     }
 
-    await appendRow('Logs', [nowFormatted, userAuth.username, idTicket, isAPI ? "Exportó a Middleware API" : "Exportó a Legacy"]);
+    const logMensaje = isAPI ? `Exportó a Middleware API. Payload: ${JSON.stringify(apiPayload)}` : "Exportó a Legacy";
+    await appendRow('Logs', [nowFormatted, userAuth.username, idTicket, logMensaje]);
 
     return {
       status: "success",
