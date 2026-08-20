@@ -305,6 +305,7 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       }
     }
 
+    let apiPayload: any = null;
     if (isAPI) {
       // Determine CREATE or EDIT
       let apiAction = "CREATE";
@@ -318,7 +319,7 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       }
 
       const txId = 'tx_' + Date.now() + '_' + Math.floor(Math.random()*1000);
-      const apiPayload = {
+      apiPayload = {
         header: {
           transaction_id: txId,
           source_system: "railway_backend_crm",
