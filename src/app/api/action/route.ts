@@ -33,7 +33,7 @@ import {
   handleUpdatePassengers,
   handleUpdateTicketEvento,
 } from './handlers/writers';
-import { handleExportarALegacy } from './handlers/orbix';
+import { handleExportarALegacy, handleGetConfigMigracion, handleSaveConfigMigracion } from './handlers/orbix';
 import {
   handleGetConfigWA,
   handleGetContactosNotificacion,
@@ -92,6 +92,8 @@ export async function POST(request: Request) {
       case 'cancelRequest':        return NextResponse.json(await handleCancelRequest(auth, body));
       case 'markPurchased':        return NextResponse.json(await handleMarkPurchased(auth, body));
       case 'exportarALegacy':      return NextResponse.json(await handleExportarALegacy(auth, body));
+      case 'getConfigMigracion':   return NextResponse.json(await handleGetConfigMigracion(auth));
+      case 'saveConfigMigracion':  return NextResponse.json(await handleSaveConfigMigracion(auth, body));
 
       // ── Solicitudes ───────────────────────────────────────────────────────
       case 'createRequest':        return NextResponse.json(await handleCreateRequest(auth, body));

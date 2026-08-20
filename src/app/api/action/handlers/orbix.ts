@@ -1,4 +1,4 @@
-import { getSheetData, getCompaniesMap, appendRow } from '@/lib/sheets';
+import { getSheetData, getCompaniesMap, appendRow, updateCell } from '@/lib/sheets';
 import { authenticateUser } from './auth';
 
 function _generateHexId() {
@@ -33,6 +33,9 @@ export async function handleExportarALegacy(authParams: any, data: any) {
   if (!idTicket) return { status: 'error', message: 'ID de ticket requerido.' };
   const legacyId = process.env.LEGACY_SS_ID;
   if (!legacyId) return { status: 'error', message: 'LEGACY_SS_ID no configurado en el servidor.' };
+
+  const configRes = await handleGetConfigMigracion(authParams);
+  const isAPI = configRes.data && configRes.data.metodo === 'API';
 
   const solicitudes = await getSheetData('Solicitudes');
   const ticket = solicitudes.find(row => String(row[0]) === String(idTicket));
@@ -133,30 +136,54 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       if (mPnr && mPnr[1].trim() !== 'PENDIENTE') claves.push(mPnr[1].trim());
     });
 
-    await appendRow('Viajes', [
-      idTicket,
-      nombreViaje,
-      emailAsignado,
-      0,
-      empresaId,
-      evento || '',
-      contactoId,
-      destinoPrincipal,
-      '',
-      nowFormatted,
-      fechaMin ? fmtShort(fechaMin) : '',
-      fechaMax ? fmtShort(fechaMax) : '',
-      'Crédito',
-      '',
-      claves.join(' / ') || '',
-      String(ticket[5] || ''),
-      '', // 17: Generar PDF
-      nowFormatted, // 18: Fecha de creación
-      idTicket, // 19: Solicitud web
-      userAuth.username // 20: Dueño
-    ], legacyId);
+    let viajePayload: any = null;
+    if (isAPI) {
+      viajePayload = {
+        id_viaje: idTicket,
+        nombre_viaje: nombreViaje,
+        email_asignado: emailAsignado,
+        monto_total: 0,
+        empresa_id: empresaId,
+        evento: evento || '',
+        contacto_id: contactoId,
+        destino_principal: destinoPrincipal,
+        timestamp: nowFormatted,
+        fecha_min: fechaMin ? fmtShort(fechaMin) : '',
+        fecha_max: fechaMax ? fmtShort(fechaMax) : '',
+        status: 'Crédito',
+        claves_reserva: claves.join(' / ') || '',
+        oportunidad_hubspot: String(ticket[5] || ''),
+        fecha_creacion: nowFormatted,
+        solicitud_web: idTicket,
+        dueno: userAuth.username
+      };
+    } else {
+      await appendRow('Viajes', [
+        idTicket,
+        nombreViaje,
+        emailAsignado,
+        0,
+        empresaId,
+        evento || '',
+        contactoId,
+        destinoPrincipal,
+        '',
+        nowFormatted,
+        fechaMin ? fmtShort(fechaMin) : '',
+        fechaMax ? fmtShort(fechaMax) : '',
+        'Crédito',
+        '',
+        claves.join(' / ') || '',
+        String(ticket[5] || ''),
+        '', // 17: Generar PDF
+        nowFormatted, // 18: Fecha de creación
+        idTicket, // 19: Solicitud web
+        userAuth.username // 20: Dueño
+      ], legacyId);
+    }
 
     const reservaIds: string[] = [];
+    const reservasPayload: any[] = [];
     for (let ri = 0; ri < opcionesCompradas.length; ri++) {
       const op = opcionesCompradas[ri];
       const desc = String(op[2] || '');
@@ -239,50 +266,91 @@ export async function handleExportarALegacy(authParams: any, data: any) {
       const idReserva = _generateHexId();
       reservaIds.push(idReserva);
 
-      await appendRow('Reservas', [
-        idReserva,
-        descReserva,
-        empresaId,
-        idTicket,
-        nowFormatted,
-        precioServicio,
-        tipoEmoji,
-        nPax,
-        aerolineaIda || '',
-        '',
-        origen,
-        destino,
-        regreso,
-        fechaIn ? fmtShort(fechaIn) : '',
-        (fechaOut || fechaIn) ? fmtShort(fechaOut || fechaIn) : '',
-        hotelNombre,
-        aerolineaIda,
-        horaSalIda,
-        horaLlegIda,
-        claveIda,
-        numVueloIda,
-        aerolineaVta,
-        horaSalVta,
-        horaLlegVta,
-        claveVta,
-        numVueloVta,
-        pnr || claveIda || '.',
-        costoServicio,
-        7,
-        '',
-        '',
-        '',
-        '',
-        descLimpia.substring(0, 200),
-        emailAsignado,
-        nowFormatted,
-        1,
-        nowFormatted,
-        ''
-      ], legacyId);
+      if (isAPI) {
+        reservasPayload.push({
+          id_reserva: idReserva,
+          descripcion: descReserva,
+          empresa_id: empresaId,
+          id_ticket: idTicket,
+          timestamp: nowFormatted,
+          precio_servicio: precioServicio,
+          tipo: tipoEmoji,
+          num_pax: nPax,
+          aerolinea: aerolineaIda || '',
+          origen: origen,
+          destino: destino,
+          regreso: regreso,
+          fecha_in: fechaIn ? fmtShort(fechaIn) : '',
+          fecha_out: (fechaOut || fechaIn) ? fmtShort(fechaOut || fechaIn) : '',
+          hotel: hotelNombre,
+          aerolinea_ida: aerolineaIda,
+          hora_salida_ida: horaSalIda,
+          hora_llegada_ida: horaLlegIda,
+          clave_ida: claveIda,
+          vuelo_ida: numVueloIda,
+          aerolinea_vta: aerolineaVta,
+          hora_salida_vta: horaSalVta,
+          hora_llegada_vta: horaLlegVta,
+          clave_vta: claveVta,
+          vuelo_vta: numVueloVta,
+          pnr: pnr || claveIda || '.',
+          costo_servicio: costoServicio,
+          desc_limpia: descLimpia.substring(0, 200),
+          email_asignado: emailAsignado
+        });
+      } else {
+        await appendRow('Reservas', [
+          idReserva, descReserva, empresaId, idTicket, nowFormatted, precioServicio, tipoEmoji, nPax, aerolineaIda || '', '', origen, destino, regreso, fechaIn ? fmtShort(fechaIn) : '', (fechaOut || fechaIn) ? fmtShort(fechaOut || fechaIn) : '', hotelNombre, aerolineaIda, horaSalIda, horaLlegIda, claveIda, numVueloIda, aerolineaVta, horaSalVta, horaLlegVta, claveVta, numVueloVta, pnr || claveIda || '.', costoServicio, 7, '', '', '', '', descLimpia.substring(0, 200), emailAsignado, nowFormatted, 1, nowFormatted, ''
+        ], legacyId);
+      }
     }
 
-    await appendRow('Logs', [nowFormatted, userAuth.username, idTicket, "Exportó a Legacy"]);
+    if (isAPI) {
+      // Determine CREATE or EDIT
+      let apiAction = "CREATE";
+      try {
+        const viajesList = await getSheetData('Viajes', legacyId);
+        if (viajesList.some(v => String(v[0]).trim() === String(idTicket).trim())) {
+          apiAction = "EDIT";
+        }
+      } catch (e) {
+        console.error('Failed to get Viajes for existence check, defaulting to CREATE', e);
+      }
+
+      const txId = 'tx_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+      const apiPayload = {
+        header: {
+          transaction_id: txId,
+          source_system: "railway_backend_crm",
+          action: apiAction,
+          environment: "prod",
+          timestamp: new Date().toISOString()
+        },
+        payload: {
+          viaje: viajePayload,
+          reservas: reservasPayload
+        }
+      };
+
+      const middlewareUrl = process.env.MIDDLEWARE_API_URL || 'https://indipristi.taila4be24.ts.net';
+      
+      console.log("=== ENVIANDO A SHEETS MIDDLEWARE API ===");
+      console.log("URL:", `${middlewareUrl}/api/v1/viajes`);
+      console.log("Payload:", JSON.stringify(apiPayload, null, 2));
+
+      const response = await fetch(`${middlewareUrl}/api/v1/viajes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiPayload)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Middleware API Error (${response.status}): ${errorText}`);
+      }
+    }
+
+    await appendRow('Logs', [nowFormatted, userAuth.username, idTicket, isAPI ? "Exportó a Middleware API" : "Exportó a Legacy"]);
 
     return {
       status: "success",
@@ -296,5 +364,54 @@ export async function handleExportarALegacy(authParams: any, data: any) {
   } catch (e: any) {
     console.error('Error exportando a legacy:', e);
     return { status: "error", message: "Error al exportar: " + e.message };
+  }
+}
+
+
+export async function handleGetConfigMigracion(authParams: any) {
+  const userAuth = await authenticateUser(authParams);
+  if (!userAuth || !['super', 'indipris', 'admin'].includes(userAuth.role)) {
+    return { status: 'error', message: 'Sin permisos.' };
+  }
+  
+  try {
+    const rows = await getSheetData('Config_Whatsapp');
+    if (rows) {
+      for (const row of rows) {
+        if (String(row[0] || '').trim() === 'MIGRATION_METHOD') {
+          return { status: 'success', data: { metodo: String(row[1] || '').trim() } };
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching config migration', e);
+  }
+  
+  return { status: 'success', data: { metodo: 'LEGACY' } };
+}
+
+export async function handleSaveConfigMigracion(authParams: any, data: any) {
+  const userAuth = await authenticateUser(authParams);
+  if (!userAuth || !['super', 'indipris', 'admin'].includes(userAuth.role)) {
+    return { status: 'error', message: 'Sin permisos.' };
+  }
+  
+  const metodo = data.metodo === 'API' ? 'API' : 'LEGACY';
+  try {
+    const rows = await getSheetData('Config_Whatsapp');
+    let found = false;
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][0] || '').trim() === 'MIGRATION_METHOD') {
+        await updateCell('Config_Whatsapp', i + 2, 2, metodo);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      await appendRow('Config_Whatsapp', ['MIGRATION_METHOD', metodo]);
+    }
+    return { status: 'success', data: { metodo } };
+  } catch (e: any) {
+    return { status: 'error', message: 'Error saving config migration: ' + e.message };
   }
 }

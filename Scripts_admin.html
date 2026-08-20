@@ -920,4 +920,34 @@
         URL.revokeObjectURL(a.href);
         Toast.fire({ text: 'CSV descargado', icon: 'success', timer: 1500, showConfirmButton: false, toast: true, position: 'bottom-end' });
     };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONFIGURACIÓN DE MIGRACIÓN
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.loadConfigMigracion = async () => {
+        showLoading('Cargando configuración...');
+        const res = await apiCall('getConfigMigracion');
+        hideLoading();
+        
+        if (res.status === 'success' && res.data) {
+            const sel = document.getElementById('config-migracion-metodo');
+            if (sel) sel.value = res.data.metodo || 'LEGACY';
+        }
+    };
+
+    window.saveConfigMigracion = async () => {
+        const sel = document.getElementById('config-migracion-metodo');
+        if (!sel) return;
+        
+        const metodo = sel.value;
+        showLoading('Guardando configuración...');
+        const res = await apiCall('saveConfigMigracion', { metodo });
+        hideLoading();
+        
+        if (res.status === 'success') {
+            Toast.fire({ text: 'Configuración guardada exitosamente.', icon: 'success', timer: 2000, showConfirmButton: false });
+        } else {
+            Toast.fire({ text: res.message || 'Error al guardar.', icon: 'error' });
+        }
+    };
 </script>

@@ -144,13 +144,33 @@ export async function handleSendWhatsapp(authParams: any, data: any) {
     const tel = phone.replace(/[\s\-()]/g, '').replace(/^00/, '+').replace(/^(?!\+)/, '+');
 
     let statusResult = 'ok';
-    try {
-      const url = `https://api.textmebot.com/send.php?recipient=${encodeURIComponent(tel)}&apikey=${apiKey}&text=${encodeURIComponent(mensaje)}`;
-      const res = await fetch(url, { method: 'GET' });
-      if (!res.ok) statusResult = `HTTP ${res.status}`;
-      else sent++;
-    } catch (e: any) {
-      statusResult = e.message || 'error';
+    let success = false;
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    // Pausa inicial para no saturar la API (evita el envío demasiado rápido entre múltiples contactos)
+    await new Promise(r => setTimeout(r, 1000));
+
+    while (!success && attempts < maxAttempts) {
+      attempts++;
+      try {
+        const url = `https://api.textmebot.com/send.php?recipient=${encodeURIComponent(tel)}&apikey=${apiKey}&text=${encodeURIComponent(mensaje)}`;
+        const res = await fetch(url, { method: 'GET' });
+        
+        if (!res.ok) {
+          statusResult = `HTTP ${res.status}`;
+          // Si falló, esperamos 2 segundos antes de volver a intentar
+          if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 2000));
+        } else {
+          sent++;
+          success = true;
+          statusResult = attempts > 1 ? `ok (intento ${attempts})` : 'ok';
+        }
+      } catch (e: any) {
+        statusResult = e.message || 'error';
+        // Si hubo error de red/fetch, esperamos 2 segundos antes de reintentar
+        if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 2000));
+      }
     }
 
     // Log to Logs_Whatsapp sheet

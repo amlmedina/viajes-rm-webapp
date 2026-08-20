@@ -85,13 +85,14 @@
         if (tab === 'notificaciones') await renderNotificacionesTable();
         if (tab === 'walog') await loadWaLogs();
         if (tab === 'rpdetalle') initReporteDetallado();
+        if (tab === 'migracion') await loadConfigMigracion();
     };
 
     window.showDashboard = () => {
         document.getElementById('app-view').classList.add('hidden');
         document.getElementById('dashboard-view').classList.remove('hidden');
         // Asegurar que el panel operativo esté visible
-        const allPanels = ['operativo', 'financiero', 'usuarios', 'notificaciones', 'reporte', 'walog', 'rpdetalle'];
+        const allPanels = ['operativo', 'financiero', 'usuarios', 'notificaciones', 'reporte', 'walog', 'rpdetalle', 'migracion'];
         allPanels.forEach(t => {
             const panel = document.getElementById('dashboard-' + t);
             if (panel) panel.classList.add('hidden');
@@ -148,9 +149,6 @@
         if (res.status === 'success') {
             await refreshDashboardSilencioso();
             await openDetalles(idTicketEnFoco);
-            if (nuevoEstado === 'Comprado' && typeof window.exportarALegacy === 'function') {
-                setTimeout(() => { window.exportarALegacy(); }, 500);
-            }
         } else Toast.fire({ text: res.message, icon: 'error' });
     };
 
