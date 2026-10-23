@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { CATEGORIZED_AIRLINES, getCustomAirlines, rememberAirline } from '@/components/CargarCotizacionesModal';
 
 export default function MobileDashboard() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export default function MobileDashboard() {
   const [showCargarModal, setShowCargarModal] = useState(false);
   const [opcionesForm, setOpcionesForm] = useState<any[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
+  const [customAirlines, setCustomAirlines] = useState<string[]>([]);
 
   // Modal para Marcar Comprado y Subir PNR / Orbix
   const [showComprarModal, setShowComprarModal] = useState(false);
@@ -113,6 +115,7 @@ export default function MobileDashboard() {
       idServicio: firstSvc?.[7] || ''
     };
 
+    setCustomAirlines(getCustomAirlines());
     setOpcionesForm([defaultOpt]);
     setShowCargarModal(true);
   };
@@ -147,6 +150,10 @@ export default function MobileDashboard() {
 
   const updateOptionField = (idx: number, field: string, val: any) => {
     setOpcionesForm(prev => prev.map((o, i) => i === idx ? { ...o, [field]: val } : o));
+    if (field === 'aerolinea' && typeof val === 'string' && val.trim().length > 2) {
+      rememberAirline(val);
+      setCustomAirlines(getCustomAirlines());
+    }
   };
 
   // Guardar opciones cargadas (Cotización)
@@ -155,6 +162,10 @@ export default function MobileDashboard() {
       showToast('Costo y Aerolínea son obligatorios en todas las opciones.', 'error');
       return;
     }
+
+    opcionesForm.forEach(o => {
+      if (o.aerolinea) rememberAirline(o.aerolinea);
+    });
 
     setActionLoading(true);
     try {
@@ -751,6 +762,22 @@ export default function MobileDashboard() {
       {/* ── MODAL CARGAR COTIZACIONES EN MÓVIL ────────────────────────── */}
       {showCargarModal && (
         <div className="fixed inset-0 bg-slate-900/80 z-[80] flex items-end justify-center backdrop-blur-sm" onClick={() => setShowCargarModal(false)}>
+          {/* Datalist categorizada para autocompletado y memoria */}
+          <datalist id="datalist-aerolineas-mobile">
+            {customAirlines.length > 0 && (
+              <>
+                {customAirlines.map(c => (
+                  <option key={`m-custom-${c}`} value={c}>⭐ {c} (Guardada)</option>
+                ))}
+              </>
+            )}
+            {CATEGORIZED_AIRLINES.map(a => (
+              <option key={`m-${a.code}-${a.name}`} value={a.name}>
+                {a.region === 'México' ? '🇲🇽' : a.region === 'USA' ? '🇺🇸' : '🇪🇺'} {a.name} ({a.code}) · {a.region}
+              </option>
+            ))}
+          </datalist>
+
           <div 
             className="bg-white w-full max-w-xl rounded-t-[2.5rem] shadow-2xl flex flex-col h-[90vh] overflow-hidden"
             onClick={e => e.stopPropagation()}
@@ -784,15 +811,46 @@ export default function MobileDashboard() {
                     )}
                   </div>
 
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Aerolínea / Proveedor *</label>
+                  {/* Selector Inteligente de Aerolínea */}
+                  <div className="bg-indigo-50/50 border border-indigo-100 p-3 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-black text-indigo-700 uppercase flex items-center gap-1">
+                        <span>✈️ Aerolínea / Proveedor</span>
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[8px] font-bold text-indigo-500 bg-indigo-100/70 px-2 py-0.5 rounded-full">Sugerida / Libre</span>
+                    </div>
                     <input 
                       type="text" 
+                      list="datalist-aerolineas-mobile"
                       value={opt.aerolinea}
                       onChange={e => updateOptionField(idx, 'aerolinea', e.target.value)}
-                      placeholder="Ej. Aeroméxico, Volaris, Viva"
-                      className="w-full bg-slate-50 border-2 border-slate-100 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-pink-500"
+                      onBlur={e => {
+                        if (e.target.value) {
+                          rememberAirline(e.target.value);
+                          setCustomAirlines(getCustomAirlines());
+                        }
+                      }}
+                      placeholder="Ej. Aeroméxico, Volaris, American..."
+                      className="w-full bg-white border border-indigo-200 focus:border-pink-500 p-2.5 rounded-xl font-black text-xs outline-none text-indigo-950 shadow-sm"
                     />
+                    {/* Píldoras rápidas para móviles */}
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {['Aeroméxico', 'Volaris', 'VivaAerobus', 'American Airlines', 'Iberia', 'United Airlines'].map(ap => (
+                        <button
+                          key={ap}
+                          type="button"
+                          onClick={() => updateOptionField(idx, 'aerolinea', ap)}
+                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full border transition ${
+                            opt.aerolinea.toLowerCase() === ap.toLowerCase()
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                              : 'bg-white text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {ap}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">

@@ -407,6 +407,7 @@
         });
 
         renderOptModal();
+        populateCustomAirlines();
         // Set IVA checkbox from empresa politica
         const ivaCheckbox = document.getElementById('opt-aplica-iva');
         if (ivaCheckbox) {
@@ -414,6 +415,64 @@
             ivaCheckbox.checked = _pol ? _pol.aplicaIVA !== false : true;
         }
         document.getElementById('modal-opt').classList.remove('hidden');
+    };
+
+    // Funciones para memorizar y poblar aerolíneas personalizadas dinámicamente
+    window.rememberCustomAirline = function(airline) {
+        if (!airline || typeof window === 'undefined') return;
+        const clean = airline.trim();
+        if (!clean || clean.length < 2) return;
+        try {
+            const raw = localStorage.getItem('indipris_custom_airlines');
+            const list = raw ? JSON.parse(raw) : [];
+            if (!list.some(c => c.toLowerCase() === clean.toLowerCase())) {
+                list.unshift(clean);
+                localStorage.setItem('indipris_custom_airlines', JSON.stringify(list));
+                const dl = document.getElementById('lista-aerolineas');
+                if (dl) {
+                    const opt = document.createElement('option');
+                    opt.value = clean;
+                    opt.textContent = `⭐ ${clean} (Guardada)`;
+                    dl.prepend(opt);
+                }
+            }
+        } catch(e) {}
+    };
+
+    window.populateCustomAirlines = function() {
+        try {
+            const raw = localStorage.getItem('indipris_custom_airlines');
+            if (!raw) return;
+            const list = JSON.parse(raw);
+            const dl = document.getElementById('lista-aerolineas');
+            if (dl && Array.isArray(list)) {
+                list.slice().reverse().forEach(clean => {
+                    if (!dl.querySelector(`option[value="${clean}"]`)) {
+                        const opt = document.createElement('option');
+                        opt.value = clean;
+                        opt.textContent = `⭐ ${clean} (Guardada)`;
+                        dl.prepend(opt);
+                    }
+                });
+            }
+        } catch(e) {}
+    };
+
+    window.selectAirlinePill = function(svcId, optId, name) {
+        const input = document.getElementById('aero-input-' + optId);
+        if (input) input.value = name;
+        updateOpcion(svcId, optId, 'v_aerolinea', name);
+        rememberCustomAirline(name);
+        const parent = input?.closest('.aero-group-container');
+        if (parent) {
+            parent.querySelectorAll('button').forEach(btn => {
+                if (btn.textContent.trim() === name) {
+                    btn.className = 'text-[9px] font-bold px-2.5 py-1 rounded-full border transition bg-indigo-600 text-white border-indigo-600 shadow-sm';
+                } else {
+                    btn.className = 'text-[9px] font-bold px-2.5 py-1 rounded-full border transition bg-white text-slate-600 border-slate-200 hover:border-indigo-400';
+                }
+            });
+        }
     };
 
     window.addOpcionSlot = (svcId, addPair = false) => {
@@ -467,6 +526,9 @@
         const op = currentOpcionesPorServicio[svcId]?.find(o => String(o.id) === String(optId));
         if (!op) return;
         op[field] = value;
+        if (field === 'v_aerolinea' && value && value.trim().length > 2) {
+            rememberCustomAirline(value);
+        }
         if (field === 'costo' || field === 'fee') {
             _recalcPriceSummary(svcId, optId);
         }
@@ -533,47 +595,49 @@
                 const optsReg = currentOpcionesPorServicio[svcReg] || [];
                 const baseLabel = `${s[1]} | ${s[2]} -> ${s[3]}`;
 
-                html += `<div class="mb-8 border-2 border-blue-200 rounded-2xl p-4 md:p-6 bg-white shadow-sm">
-        <h4 class="text-[10px] md:text-xs font-black text-blue-700 uppercase tracking-widest mb-1 pb-2"> ${baseLabel} - Vuelo Redondo</h4>
-        <p class="text-[9px] text-slate-400 font-bold mb-4 flex justify-between items-center">
-            <span>Carga opciones de ida y regreso.</span>
+                html += `<div class="mb-8 border-2 border-blue-200 rounded-3xl p-4 md:p-6 bg-white shadow-sm">
+        <h4 class="text-xs md:text-sm font-black text-blue-700 uppercase tracking-widest mb-1 pb-2 flex items-center gap-2">
+          <span>✈️</span> ${baseLabel} - Vuelo Redondo
+        </h4>
+        <p class="text-[10px] text-slate-400 font-bold mb-4 flex justify-between items-center">
+            <span>Carga opciones de ida y regreso estructuradas lado a lado.</span>
         </p>
 
         <!-- IDA -->
-        <div class="mb-6 border border-emerald-200 rounded-xl p-4 bg-emerald-50/30 relative">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-[9px] font-black text-emerald-700 uppercase tracking-widest bg-emerald-100 px-3 py-1 rounded-full">-> IDA: ${s[2]} -> ${s[3]}</span>
+        <div class="mb-6 border border-emerald-200 rounded-2xl p-4 bg-emerald-50/20 relative">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-[10px] font-black text-emerald-800 uppercase tracking-widest bg-emerald-100 px-3.5 py-1 rounded-full shadow-sm">➔ TRAYECTO IDA: ${s[2]} ➔ ${s[3]}</span>
           </div>
-          <div class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             ${optsIda.map((o, i) => buildOpcionHTML(svcIda, o, i, optsIda.length)).join('')}
           </div>
-          <button onclick="addOpcionSlot('${svcIda}')" class="mt-4 w-full md:w-auto text-[10px] font-black text-emerald-600 bg-white border border-emerald-200 px-4 py-2 rounded-full hover:bg-emerald-50 transition shadow-sm">+ AÑADIR OTRA OPCION DE IDA</button>
+          <button onclick="addOpcionSlot('${svcIda}')" class="mt-4 w-full md:w-auto text-[10px] font-black text-emerald-600 bg-white border border-emerald-200 px-4 py-2 rounded-full hover:bg-emerald-50 transition shadow-sm">+ AÑADIR OTRA OPCIÓN DE IDA</button>
         </div>
 
         <!-- REGRESO -->
-        <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50/30 relative">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-[9px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-100 px-3 py-1 rounded-full"><- REGRESO: ${s[3]} -> ${s[2]}</span>
+        <div class="border border-indigo-200 rounded-2xl p-4 bg-indigo-50/20 relative">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-[10px] font-black text-indigo-800 uppercase tracking-widest bg-indigo-100 px-3.5 py-1 rounded-full shadow-sm">⬅ TRAYECTO REGRESO: ${s[3]} ➔ ${s[2]}</span>
           </div>
-          <div class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             ${optsReg.map((o, i) => buildOpcionHTML(svcReg, o, i, optsReg.length)).join('')}
           </div>
-          <button onclick="addOpcionSlot('${svcReg}')" class="mt-4 w-full md:w-auto text-[10px] font-black text-indigo-600 bg-white border border-indigo-200 px-4 py-2 rounded-full hover:bg-indigo-50 transition shadow-sm">+ AÑADIR OTRA OPCION DE REGRESO</button>
+          <button onclick="addOpcionSlot('${svcReg}')" class="mt-4 w-full md:w-auto text-[10px] font-black text-indigo-600 bg-white border border-indigo-200 px-4 py-2 rounded-full hover:bg-indigo-50 transition shadow-sm">+ AÑADIR OTRA OPCIÓN DE REGRESO</button>
         </div>
         
         <div class="mt-6 flex justify-center border-t border-blue-100 pt-4">
-            <button onclick="addOpcionSlot('${svcId}', true)" class="w-full md:w-auto text-[10px] font-black text-white bg-blue-600 px-6 py-2 rounded-full hover:bg-blue-700 transition shadow-sm">+ AÑADIR PAR (IDA + REGRESO)</button>
+            <button onclick="addOpcionSlot('${svcId}', true)" class="w-full md:w-auto text-xs font-black text-white bg-blue-600 px-6 py-2.5 rounded-2xl hover:bg-blue-700 transition shadow-md">+ AÑADIR PAR SIMULTÁNEO (IDA + REGRESO)</button>
         </div>
       </div>`;
             } else {
                 const label = `${s[1]} | ${s[2]} -> ${s[3]}`;
                 const opts = currentOpcionesPorServicio[svcId] || [];
-                html += `<div class="mb-8 border-2 border-slate-200 rounded-2xl p-4 md:p-6 bg-white shadow-sm">
-        <h4 class="text-[10px] md:text-xs font-black text-pink-600 uppercase tracking-widest mb-4 border-b-2 border-slate-100 pb-2">${label}</h4>
-        <div class="space-y-4">
+                html += `<div class="mb-8 border-2 border-slate-200 rounded-3xl p-4 md:p-6 bg-white shadow-sm">
+        <h4 class="text-xs md:text-sm font-black text-pink-600 uppercase tracking-widest mb-4 border-b-2 border-slate-100 pb-2">${label}</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           ${opts.map((o, index) => buildOpcionHTML(svcId, o, index, opts.length)).join('')}
         </div>
-        <button onclick="addOpcionSlot('${svcId}')" class="text-[10px] font-black text-pink-600 mt-4 bg-pink-50 px-4 py-2 rounded-full hover:bg-pink-100 transition shadow-sm w-full md:w-auto">+ AÑADIR OTRA OPCION</button>
+        <button onclick="addOpcionSlot('${svcId}')" class="text-xs font-black text-pink-600 mt-4 bg-pink-50 border border-pink-200 px-5 py-2.5 rounded-2xl hover:bg-pink-100 transition shadow-sm w-full md:w-auto">+ AÑADIR OTRA OPCIÓN ALTERNATIVA</button>
       </div>`;
             }
         });
@@ -591,78 +655,123 @@
         let camposHtml = '';
 
         if (o.tipo === 'VUELO') {
+            const topPills = ['Aeroméxico', 'Volaris', 'VivaAerobus', 'American Airlines', 'Iberia', 'United Airlines'];
             camposHtml = `
-    <!-- Aerolinea - campo prominente y obligatorio -->
-    <div class="mb-3 bg-indigo-50 border-2 border-indigo-300 rounded-xl p-3 flex items-center gap-3">
-      <span class="text-lg shrink-0"></span>
-      <div class="flex-1">
-        <label class="text-[9px] font-black text-indigo-700 uppercase tracking-widest block mb-1">Aerolinea <span class="text-red-500">*</span></label>
-        <input type="text" value="${o.v_aerolinea || ''}" oninput="updateOpcion('${svcId}','${o.id}','v_aerolinea',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_aerolinea',this.value)"
-          placeholder="Ej. Aeromexico, Volaris, United..."
-          class="w-full border-b-2 border-indigo-300 py-1.5 outline-none font-black text-sm bg-transparent focus:border-indigo-600 text-indigo-800 placeholder-indigo-300"
-          required>
+    <!-- Aerolinea - Selector Inteligente Estandarizado -->
+    <div class="mb-3.5 bg-indigo-50/70 border-2 border-indigo-200 rounded-2xl p-3 aero-group-container">
+      <div class="flex items-center justify-between mb-1.5">
+        <label class="text-[9px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-1">
+          <span>✈️ Aerolínea / Proveedor</span>
+          <span class="text-red-500">*</span>
+        </label>
+        <span class="text-[8px] font-bold text-indigo-500 bg-indigo-100/70 px-2 py-0.5 rounded-full">Sugerida / Libre</span>
+      </div>
+      <input type="text" 
+        id="aero-input-${o.id}"
+        list="lista-aerolineas" 
+        value="${o.v_aerolinea || ''}" 
+        oninput="updateOpcion('${svcId}','${o.id}','v_aerolinea',this.value)" 
+        onchange="updateOpcion('${svcId}','${o.id}','v_aerolinea',this.value); rememberCustomAirline(this.value);"
+        onblur="rememberCustomAirline(this.value);"
+        placeholder="Ej. Aeroméxico, Volaris, American..."
+        class="w-full bg-white border border-indigo-200 focus:border-indigo-600 rounded-xl px-3 py-2 outline-none font-black text-xs text-indigo-950 shadow-sm placeholder-indigo-300 transition"
+        required>
+      
+      <!-- Píldoras rápidas de selección frecuente -->
+      <div class="flex flex-wrap gap-1 mt-2">
+        ${topPills.map(aero => `
+          <button type="button" 
+            onclick="selectAirlinePill('${svcId}', '${o.id}', '${aero}')"
+            class="text-[9px] font-bold px-2 py-0.5 rounded-full border transition ${o.v_aerolinea === aero ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'}">
+            ${aero}
+          </button>
+        `).join('')}
       </div>
     </div>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Fecha</label><input type="date" value="${o.v_fecha}" oninput="updateOpcion('${svcId}','${o.id}','v_fecha',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_fecha',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Origen</label><input type="text" value="${o.v_origen}" oninput="updateOpcion('${svcId}','${o.id}','v_origen',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_origen',this.value)" placeholder="MEX" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Destino</label><input type="text" value="${o.v_destino}" oninput="updateOpcion('${svcId}','${o.id}','v_destino',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_destino',this.value)" placeholder="CUN" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">No. Vuelo</label><input type="text" value="${o.v_num}" oninput="updateOpcion('${svcId}','${o.id}','v_num',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_num',this.value)" placeholder="AM500" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Salida</label><input type="time" value="${o.v_hSalida}" oninput="updateOpcion('${svcId}','${o.id}','v_hSalida',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_hSalida',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Llegada</label><input type="time" value="${o.v_hLlegada}" oninput="updateOpcion('${svcId}','${o.id}','v_hLlegada',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_hLlegada',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">PNR</label><input type="text" value="${o.v_pnr}" oninput="updateOpcion('${svcId}','${o.id}','v_pnr',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_pnr',this.value)" placeholder="X7B9M2" class="w-full border-b-2 border-slate-200 py-2 outline-none font-black text-xs bg-transparent text-pink-600 focus:border-indipris-main uppercase"></div>
+
+    <div class="grid grid-cols-2 gap-2 mb-3 bg-white p-3 rounded-xl border border-slate-200">
+      <div class="col-span-2">
+        <label class="text-[8px] font-black text-slate-400 uppercase block mb-1">Fecha de Salida</label>
+        <input type="date" value="${o.v_fecha}" oninput="updateOpcion('${svcId}','${o.id}','v_fecha',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_fecha',this.value)" class="w-full border-b border-slate-200 py-1.5 outline-none font-bold text-xs bg-transparent focus:border-indigo-600">
+      </div>
+      <div>
+        <label class="text-[8px] font-black text-slate-400 uppercase block mb-1">Origen</label>
+        <input type="text" value="${o.v_origen}" oninput="updateOpcion('${svcId}','${o.id}','v_origen',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_origen',this.value)" placeholder="MEX" class="w-full border-b border-slate-200 py-1 outline-none font-black text-xs bg-transparent focus:border-indigo-600 uppercase">
+      </div>
+      <div>
+        <label class="text-[8px] font-black text-slate-400 uppercase block mb-1">Destino</label>
+        <input type="text" value="${o.v_destino}" oninput="updateOpcion('${svcId}','${o.id}','v_destino',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_destino',this.value)" placeholder="CUN" class="w-full border-b border-slate-200 py-1 outline-none font-black text-xs bg-transparent focus:border-indigo-600 uppercase">
+      </div>
+      <div>
+        <label class="text-[8px] font-black text-slate-400 uppercase block mb-1">Hora Salida</label>
+        <input type="time" value="${o.v_hSalida}" oninput="updateOpcion('${svcId}','${o.id}','v_hSalida',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_hSalida',this.value)" class="w-full border-b border-slate-200 py-1 outline-none font-bold text-xs bg-transparent focus:border-indigo-600">
+      </div>
+      <div>
+        <label class="text-[8px] font-black text-slate-400 uppercase block mb-1">Hora Llegada</label>
+        <input type="time" value="${o.v_hLlegada}" oninput="updateOpcion('${svcId}','${o.id}','v_hLlegada',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_hLlegada',this.value)" class="w-full border-b border-slate-200 py-1 outline-none font-bold text-xs bg-transparent focus:border-indigo-600">
+      </div>
+      <div>
+        <label class="text-[8px] font-black text-slate-400 uppercase block mb-1">No. Vuelo</label>
+        <input type="text" value="${o.v_num}" oninput="updateOpcion('${svcId}','${o.id}','v_num',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_num',this.value)" placeholder="AM500" class="w-full border-b border-slate-200 py-1 outline-none font-black text-xs bg-transparent focus:border-indigo-600 uppercase">
+      </div>
+      <div>
+        <label class="text-[8px] font-black text-pink-600 uppercase block mb-1">PNR / Clave</label>
+        <input type="text" value="${o.v_pnr}" oninput="updateOpcion('${svcId}','${o.id}','v_pnr',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_pnr',this.value)" placeholder="X7B9M2" class="w-full border-b border-pink-300 py-1 outline-none font-black text-xs bg-transparent text-pink-600 focus:border-pink-500 uppercase font-mono">
+      </div>
     </div>`;
         } else if (o.tipo === 'HOTEL') {
-            camposHtml = `<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Nombre del Hotel</label><input type="text" value="${o.h_nombre}" oninput="updateOpcion('${svcId}','${o.id}','h_nombre',this.value)" onchange="updateOpcion('${svcId}','${o.id}','h_nombre',this.value)" placeholder="Marriott Reforma" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Direccion</label><input type="text" value="${o.h_dir}" oninput="updateOpcion('${svcId}','${o.id}','h_dir',this.value)" onchange="updateOpcion('${svcId}','${o.id}','h_dir',this.value)" placeholder="Paseo de la Reforma..." class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Regimen</label>
+            camposHtml = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
+      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">Nombre del Hotel</label><input type="text" value="${o.h_nombre}" oninput="updateOpcion('${svcId}','${o.id}','h_nombre',this.value)" onchange="updateOpcion('${svcId}','${o.id}','h_nombre',this.value)" placeholder="Marriott Reforma" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">Dirección</label><input type="text" value="${o.h_dir}" oninput="updateOpcion('${svcId}','${o.id}','h_dir',this.value)" onchange="updateOpcion('${svcId}','${o.id}','h_dir',this.value)" placeholder="Paseo de la Reforma..." class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">Régimen</label>
         <select onchange="updateOpcion('${svcId}','${o.id}','h_desayuno',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main">
-          <option ${o.h_desayuno === 'Solo Habitación' ? 'selected' : ''}>Solo Habitacion</option>
+          <option ${o.h_desayuno === 'Solo Habitación' ? 'selected' : ''}>Solo Habitación</option>
           <option ${o.h_desayuno === 'Desayuno Incluido' ? 'selected' : ''}>Desayuno Incluido</option>
-          <option ${o.h_desayuno === 'Media Pensión' ? 'selected' : ''}>Media Pension</option>
+          <option ${o.h_desayuno === 'Media Pensión' ? 'selected' : ''}>Media Pensión</option>
           <option ${o.h_desayuno === 'All Inclusive' ? 'selected' : ''}>All Inclusive</option>
         </select>
       </div>
     </div>`;
         } else {
-            camposHtml = `<div class="mb-4"><label class="text-[8px] font-black text-slate-400 uppercase">Descripcion</label><input type="text" placeholder="Detalles de la opcion..." value="${o.desc}" oninput="updateOpcion('${svcId}','${o.id}','desc',this.value)" onchange="updateOpcion('${svcId}','${o.id}','desc',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-sm bg-transparent placeholder-slate-400 focus:border-indipris-main"></div>`;
+            camposHtml = `<div class="mb-4"><label class="text-[8px] font-black text-slate-400 uppercase">Descripción</label><input type="text" placeholder="Detalles de la opción..." value="${o.desc}" oninput="updateOpcion('${svcId}','${o.id}','desc',this.value)" onchange="updateOpcion('${svcId}','${o.id}','desc',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-sm bg-transparent placeholder-slate-400 focus:border-indipris-main"></div>`;
         }
 
-        return `<div id="opt-slot-${o.id}" class="p-4 border-2 border-slate-100 shadow-sm rounded-xl relative bg-slate-50">
-    <span class="absolute -top-2 left-4 bg-slate-800 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-sm">OPCION ${index + 1}</span>
-    ${total > 1 ? `<button onclick="removeOpcionSlot('${svcId}','${o.id}')" class="absolute top-2 right-2 text-red-500 font-bold text-xs hover:text-red-700 w-6 h-6 flex items-center justify-center bg-red-50 rounded-full">x</button>` : ''}
-    <div class="mt-4">
+        return `<div id="opt-slot-${o.id}" class="p-4 md:p-5 border-2 border-slate-200/90 shadow-sm rounded-2xl relative bg-slate-50/70 flex flex-col justify-between">
+    <div class="flex items-center justify-between mb-3 border-b border-slate-200/60 pb-2">
+      <span class="bg-slate-800 text-white text-[9px] font-black px-2.5 py-1 rounded-full shadow-sm">OPCIÓN ${index + 1}</span>
+      ${total > 1 ? `<button onclick="removeOpcionSlot('${svcId}','${o.id}')" class="text-red-500 font-bold text-xs hover:text-red-700 px-2 py-0.5 bg-red-50 hover:bg-red-100 rounded-full transition">Eliminar</button>` : ''}
+    </div>
+    <div>
       ${camposHtml}
       <!-- Comentarios visibles para el cliente -->
-      <div class="mb-4">
-        <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1"> Comentarios para el cliente</label>
-        <textarea rows="2" placeholder="Ej: Incluye maleta documentada, salida temprana recomendada..."
+      <div class="mb-3">
+        <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Comentarios / Inclusiones</label>
+        <textarea rows="2" placeholder="Ej: Incluye maleta documentada, asiento regular..."
           oninput="updateOpcion('${svcId}','${o.id}','comentario',this.value)"
           onchange="updateOpcion('${svcId}','${o.id}','comentario',this.value)"
-          class="w-full border-2 border-slate-200 rounded-xl p-3 outline-none font-bold text-xs text-slate-700 bg-white focus:border-indipris-main resize-none placeholder-slate-300">${o.comentario || ''}</textarea>
+          class="w-full border border-slate-200 rounded-xl p-2.5 outline-none font-medium text-xs text-slate-700 bg-white focus:border-indigo-600 resize-none placeholder-slate-300">${o.comentario || ''}</textarea>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-4 mt-2">
-        <div class="bg-red-50 p-2 rounded-lg border border-red-200 shadow-inner">
-          <label class="text-[8px] font-black text-red-600 uppercase">[P] Costo Neto (Privado)</label>
-          <input type="number" value="${o.costoProveedor}" oninput="updateOpcion('${svcId}','${o.id}','costoProveedor',this.value)" onchange="updateOpcion('${svcId}','${o.id}','costoProveedor',this.value)" placeholder="0.00" class="w-full bg-transparent border-b-2 border-red-200 py-1 outline-none font-black text-red-800 text-sm focus:border-red-400 placeholder-red-300">
+      <div class="grid grid-cols-2 gap-2 bg-white p-3 rounded-xl border border-slate-200">
+        <div class="col-span-2 bg-red-50/60 p-2 rounded-lg border border-red-200/60">
+          <label class="text-[8px] font-black text-red-600 uppercase">[P] Costo Neto Proveedor</label>
+          <input type="number" value="${o.costoProveedor}" oninput="updateOpcion('${svcId}','${o.id}','costoProveedor',this.value)" onchange="updateOpcion('${svcId}','${o.id}','costoProveedor',this.value)" placeholder="0.00" class="w-full bg-transparent border-b border-red-200 py-1 outline-none font-black text-red-800 text-xs focus:border-red-400 placeholder-red-300">
         </div>
-        <div class="p-2">
-          <label class="text-[8px] font-black text-slate-400 uppercase">Costo Base Venta</label>
-          <input type="number" value="${o.costo}" oninput="updateOpcion('${svcId}','${o.id}','costo',this.value)" onchange="updateOpcion('${svcId}','${o.id}','costo',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+        <div>
+          <label class="text-[8px] font-black text-slate-500 uppercase block mb-0.5">Costo Venta Base</label>
+          <input type="number" value="${o.costo}" oninput="updateOpcion('${svcId}','${o.id}','costo',this.value)" onchange="updateOpcion('${svcId}','${o.id}','costo',this.value)" placeholder="0.00" class="w-full border border-slate-200 rounded-lg p-1.5 outline-none font-black text-slate-800 bg-slate-50 focus:border-indigo-600 text-xs">
         </div>
-        <div class="p-2">
-          <label class="text-[8px] font-black text-slate-400 uppercase">Fee Total (${nPax} pax × $300)</label>
-          <input type="number" value="${o.fee}" oninput="updateOpcion('${svcId}','${o.id}','fee',this.value)" onchange="updateOpcion('${svcId}','${o.id}','fee',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+        <div>
+          <label class="text-[8px] font-black text-slate-500 uppercase block mb-0.5">Fee (${nPax} pax)</label>
+          <input type="number" value="${o.fee}" oninput="updateOpcion('${svcId}','${o.id}','fee',this.value)" onchange="updateOpcion('${svcId}','${o.id}','fee',this.value)" placeholder="0.00" class="w-full border border-slate-200 rounded-lg p-1.5 outline-none font-black text-slate-700 bg-slate-50 focus:border-indigo-600 text-xs">
         </div>
       </div>
-      <div class="mt-4">
-        <label class="block w-full border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50 rounded-xl p-3 text-center cursor-pointer transition relative overflow-hidden bg-white">
-          ${o.img ? `<img src="${o.img}" class="absolute inset-0 w-full h-full object-cover opacity-40"><span class="relative z-10 text-[10px] font-black text-pink-700">v Foto Subida</span>` : o.isUploadingImg ? `<span class="text-[10px] font-black text-slate-500">... Subiendo...</span>` : `<span class="text-[10px] font-black text-slate-500">[img] Subir foto de referencia (Opcional)</span>`}
+      <div class="mt-3">
+        <label class="block w-full border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-xl p-2.5 text-center cursor-pointer transition relative overflow-hidden bg-white">
+          ${o.img ? `<img src="${o.img}" class="absolute inset-0 w-full h-full object-cover opacity-40"><span class="relative z-10 text-[9px] font-black text-indigo-700">✓ Foto Subida</span>` : o.isUploadingImg ? `<span class="text-[9px] font-black text-slate-500">... Subiendo...</span>` : `<span class="text-[9px] font-bold text-slate-500">📎 Adjuntar captura (Opcional)</span>`}
           <input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}','${o.id}',this)">
         </label>
       </div>
-      <!-- Resumen de precios - se actualiza solo sin re-render del form -->
+      <!-- Resumen de precios -->
       <div id="price-summary-${o.id}" class="mt-3 price-summary">
         ${buildPriceSummaryHTML(feeUnit, nPax, sub, iva, tot, document.getElementById('opt-aplica-iva')?.checked ?? true)}
       </div>
@@ -675,7 +784,6 @@
         for (const svcId in currentOpcionesPorServicio) {
             for (const op of currentOpcionesPorServicio[svcId]) {
 
-                // Eliminamos la restricción. Si están vacíos, se convierten en 0 automáticamente.
                 if (!op.costo) op.costo = 0;
                 if (!op.fee) op.fee = 0;
 
@@ -683,6 +791,10 @@
                 if (op.tipo === 'VUELO') {
                     if (!op.v_fecha || !op.v_origen || !op.v_destino) return Toast.fire({ text: "Faltan Fecha, Origen o Destino.", icon: "warning" });
                     if (!op.v_aerolinea || !op.v_aerolinea.trim()) return Toast.fire({ text: "La aerolínea es obligatoria en vuelos.", icon: "warning" });
+                    
+                    // Memorizar automáticamente cualquier aerolínea nueva escrita
+                    rememberCustomAirline(op.v_aerolinea);
+
                     const tramoLabel = op._tramo ? `<p class="text-[9px] font-black uppercase tracking-widest" style="color:#6366f1">${op._tramo === 'IDA' ? '-> IDA' : '<- REGRESO'}</p>` : '';
                     const comentarioHtml = op.comentario ? `<p class="mt-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2"> ${op.comentario}</p>` : '';
                     finalDesc = `<div class="space-y-1">${tramoLabel}<p><b>Aerolinea:</b> ${op.v_aerolinea.trim()}</p><p><b>Ruta:</b> ${op.v_origen.toUpperCase()} -> ${op.v_destino.toUpperCase()}</p><p><b>Fecha:</b> ${op.v_fecha} | <b>Horario:</b> ${op.v_hSalida || 'TBA'} - ${op.v_hLlegada || 'TBA'}</p><p><b>Vuelo:</b> ${(op.v_num || 'Pendiente').toUpperCase()} | <b>PNR:</b> <span class="font-mono text-indipris-main font-black">${(op.v_pnr || 'Pendiente').toUpperCase()}</span></p>${comentarioHtml}</div>`;
@@ -695,7 +807,6 @@
                     const comentarioHtml = op.comentario ? `<p class="mt-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2"> ${op.comentario}</p>` : '';
                     finalDesc = op.comentario ? `<div class="space-y-1"><p>${op.desc}</p>${comentarioHtml}</div>` : op.desc;
                 }
-                // Usar _parentSvcId si es un sub-slot de vuelo redondo, si no usar svcId directo
                 const idServicioReal = op._parentSvcId || svcId;
                 const ivaChecked = document.getElementById('opt-aplica-iva')?.checked ?? true;
                 const ivaMultiplier = ivaChecked ? 1.16 : 1.0;
@@ -706,7 +817,6 @@
         btn.disabled = true; btn.innerText = "ENVIANDO...";
         const res = await apiCall('saveAllOptions', { idTicket: idTicketEnFoco, opciones: payloadOptions });
         if (res.status === "success") {
-            // Notificaciones en background - no bloquear la UI
             sendAppNotifications("COTIZADO", idTicketEnFoco).catch(() => { });
             closeModal('modal-opt'); closeModal('modal-detalles');
             showLoading("Actualizando..."); await refreshDashboardSilencioso(); hideLoading();
