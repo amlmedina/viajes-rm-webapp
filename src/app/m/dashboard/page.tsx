@@ -20,6 +20,11 @@ export default function MobileDashboard() {
   const [opcionesForm, setOpcionesForm] = useState<any[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
 
+  // Modal para Marcar Comprado y Subir PNR / Orbix
+  const [showComprarModal, setShowComprarModal] = useState(false);
+  const [pnrForm, setPnrForm] = useState<any[]>([]);
+  const [comprobanteUrl, setComprobanteUrl] = useState('');
+
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMsg({ text, type });
     setTimeout(() => setToastMsg(null), 3500);
@@ -270,6 +275,196 @@ export default function MobileDashboard() {
     }
   };
 
+  // ── Helpers para parsear y actualizar PNR / Vuelo en descripción ───────────
+  const extractRuta = (desc: string) => {
+    const m = desc.match(/<b>Ruta:<\/b>\s*([^<]+)/i);
+    if (m) return m[1].trim();
+    const mHotel = desc.match(/<b>Hotel:<\/b>\s*([^<]+)/i);
+    if (mHotel) return mHotel[1].trim();
+    return desc.replace(/<[^>]+>/g, ' ').slice(0, 50).trim();
+  };
+
+  const extractVuelo = (desc: string) => {
+    const m = desc.match(/<b>Vuelo:<\/b>\s*([^|<]+)/i);
+    const v = m ? m[1].trim() : '';
+    return (v.toUpperCase() === 'PENDIENTE' || v === '') ? '' : v;
+  };
+
+  const extractPNR = (desc: string) => {
+    const m = desc.match(/<b>PNR:<\/b>\s*(?:<[^>]+>)*\s*([^<]+)/i);
+    if (m) {
+      const val = m[1].trim();
+      if (val.toUpperCase() !== 'PENDIENTE' && val !== '') return val;
+    }
+    const m2 = desc.match(/<span[^>]*font-mono[^>]*>([^<]*)<\/span>/i);
+    if (m2) {
+      const val = m2[1].trim();
+      if (val.toUpperCase() !== 'PENDIENTE' && val !== '') return val;
+    }
+    return '';
+  };
+
+  const updateDescWithFlightAndPNR = (origDesc: string, vuelo: string, pnr: string) => {
+    let nuevaDesc = origDesc;
+    const fVuelo = vuelo?.trim() ? vuelo.trim().toUpperCase() : 'Pendiente';
+    const fPnr = pnr?.trim() ? pnr.trim().toUpperCase() : 'PENDIENTE';
+
+    if (/<b>Vuelo:<\/b>/i.test(nuevaDesc)) {
+      nuevaDesc = nuevaDesc.replace(/(<b>Vuelo:<\/b>\s*)([^|<]+)/i, (_, pre) => `${pre}${fVuelo} `);
+    } else {
+      nuevaDesc += `<p><b>Vuelo:</b> ${fVuelo}</p>`;
+    }
+
+    if (/<span[^>]*font-mono[^>]*>/i.test(nuevaDesc)) {
+      nuevaDesc = nuevaDesc.replace(
+        /(<span[^>]*font-mono[^>]*>)([^<]*)(<\/span>)/i,
+        (_, open, _old, close) => `${open}${fPnr}${close}`
+      );
+    } else if (/<b>PNR:<\/b>/i.test(nuevaDesc)) {
+      nuevaDesc = nuevaDesc.replace(
+        /(<b>PNR:<\/b>\s*)([^<]+)/i,
+        (_, pre) => `${pre}<span class="font-mono text-pink-600 font-black">${fPnr}</span>`
+      );
+    } else {
+      nuevaDesc += `<p><b>PNR:</b> <span class="font-mono text-pink-600 font-black">${fPnr}</span></p>`;
+    }
+
+    return nuevaDesc;
+  };
+
+  const handleOpenComprarModal = () => {
+    const opciones = ticketDetails?.opciones || [];
+    let targetOpts = opciones.filter((o: any) => o[6] === 'Autorizada');
+    if (targetOpts.length === 0) {
+      targetOpts = opciones.filter((o: any) => o[6] === 'Comprado' || (o[6] !== 'Eliminado' && o[6] !== 'Rechazada'));
+    }
+
+    const items = targetOpts.map((o: any) => {
+      const desc = String(o[2] || '');
+      return {
+        idOpcion: o[1],
+        origDesc: desc,
+        ruta: extractRuta(desc),
+        vuelo: extractVuelo(desc),
+        pnr: extractPNR(desc),
+        costo: o[3],
+        total: o[5],
+        estado: o[6]
+      };
+    });
+
+    setPnrForm(items);
+    setComprobanteUrl('');
+    setShowComprarModal(true);
+  };
+
+  const updatePnrFormField = (idx: number, field: 'vuelo' | 'pnr', val: string) => {
+    setPnrForm(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: val };
+      return updated;
+    });
+  };
+
+  const handleConfirmarCompraYOrbix = async () => {
+    if (!auth || !selectedTicket) return;
+    setActionLoading(true);
+    try {
+      // 1. Guardar PNR y número de vuelo en descripción de opciones
+      const ajustes = pnrForm.map(item => ({
+        idOpcion: item.idOpcion,
+        nuevaDesc: updateDescWithFlightAndPNR(item.origDesc, item.vuelo, item.pnr)
+      }));
+
+      if (ajustes.length > 0) {
+        await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'updatePNR',
+            auth: { u: auth.name, h: auth.hash },
+            idTicket: selectedTicket[0],
+            ajustes
+          })
+        });
+      }
+
+      // 2. Marcar como Comprado
+      const optionIds = pnrForm.map(i => i.idOpcion);
+      const purchaseRes = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'markPurchased',
+          auth: { u: auth.name, h: auth.hash },
+          idTicket: selectedTicket[0],
+          comprobanteUrl: comprobanteUrl.trim(),
+          optionIds
+        })
+      });
+      const purchaseJson = await purchaseRes.json();
+      if (purchaseJson.status !== 'success') {
+        showToast(purchaseJson.message || 'Error al marcar como comprado.', 'error');
+        setActionLoading(false);
+        return;
+      }
+
+      // 3. Enviar a Orbix
+      const orbixRes = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'exportarALegacy',
+          auth: { u: auth.name, h: auth.hash },
+          idTicket: selectedTicket[0]
+        })
+      });
+      const orbixJson = await orbixRes.json();
+
+      setShowComprarModal(false);
+      if (orbixJson.status === 'success') {
+        showToast('✓ ¡Compra confirmada y exportada a Orbix con éxito!');
+      } else {
+        showToast(`✓ Comprado. Aviso Orbix: ${orbixJson.message || 'Error al exportar'}`, 'error');
+      }
+
+      await handleSelectTicket(selectedTicket);
+      await loadDashboard(auth);
+    } catch {
+      showToast('Error de conexión al procesar compra.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDirectExportarOrbix = async () => {
+    if (!auth || !selectedTicket) return;
+    if (!confirm(`¿Deseas enviar/sincronizar el ticket ${selectedTicket[0]} con Orbix?`)) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'exportarALegacy',
+          auth: { u: auth.name, h: auth.hash },
+          idTicket: selectedTicket[0]
+        })
+      });
+      const json = await res.json();
+      if (json.status === 'success') {
+        showToast('🚀 ¡Datos enviados a Orbix exitosamente!');
+      } else {
+        showToast(json.message || 'Error al exportar a Orbix.', 'error');
+      }
+    } catch {
+      showToast('Error de conexión con Orbix.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center items-center h-full pt-32"><div className="animate-spin text-pink-500 text-4xl">❖</div></div>;
   }
@@ -486,20 +681,51 @@ export default function MobileDashboard() {
                   </button>
                 </div>
               ) : canManageOptions ? (
-                <div className="flex gap-2">
-                  <button 
-                    onClick={handleOpenCargarModal}
-                    className="flex-1 bg-pink-600 text-white font-black p-3.5 rounded-2xl shadow-lg shadow-pink-200 active:scale-95 transition-transform uppercase tracking-widest text-xs"
-                  >
-                    {ticketDetails?.opciones?.length > 0 ? 'Modificar Cotizaciones' : '+ Cargar Opciones de Viaje'}
-                  </button>
-                  <button 
-                    onClick={() => router.push(`/dashboard/ticket/${selectedTicket[0]}`)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-3.5 py-3.5 rounded-2xl active:scale-95 transition-transform text-[11px] uppercase tracking-wider"
-                    title="Ver Detalles Completos"
-                  >
-                    Detalles →
-                  </button>
+                <div className="space-y-2">
+                  {/* Botón de compra / PNR si está autorizado o tiene opciones aprobadas */}
+                  {(selectedTicket[4] === 'Autorizado' || ticketDetails?.opciones?.some((o: any) => o[6] === 'Autorizada')) && (
+                    <button 
+                      onClick={handleOpenComprarModal}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black p-3.5 rounded-2xl shadow-lg shadow-emerald-200 active:scale-95 transition-transform uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                    >
+                      <span>✓ Marcar Comprado y Subir PNR</span>
+                    </button>
+                  )}
+
+                  {/* Acciones si el ticket ya está en estado Comprado */}
+                  {selectedTicket[4] === 'Comprado' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={handleOpenComprarModal}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-black p-3 rounded-2xl shadow-md active:scale-95 transition-transform uppercase tracking-wider text-[11px] flex items-center justify-center gap-1.5"
+                      >
+                        <span>✏️ PNR / Compra</span>
+                      </button>
+                      <button 
+                        onClick={handleDirectExportarOrbix}
+                        disabled={actionLoading}
+                        className="bg-amber-500 hover:bg-amber-600 text-white font-black p-3 rounded-2xl shadow-md active:scale-95 transition-transform uppercase tracking-wider text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <span>🚀 Enviar a Orbix</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleOpenCargarModal}
+                      className="flex-1 bg-pink-600 text-white font-black p-3.5 rounded-2xl shadow-lg shadow-pink-200 active:scale-95 transition-transform uppercase tracking-widest text-xs"
+                    >
+                      {ticketDetails?.opciones?.length > 0 ? 'Modificar Cotizaciones' : '+ Cargar Opciones de Viaje'}
+                    </button>
+                    <button 
+                      onClick={() => router.push(`/dashboard/ticket/${selectedTicket[0]}`)}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-3.5 py-3.5 rounded-2xl active:scale-95 transition-transform text-[11px] uppercase tracking-wider"
+                      title="Ver Detalles Completos"
+                    >
+                      Detalles →
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex gap-2">
@@ -714,6 +940,112 @@ export default function MobileDashboard() {
                 className="flex-1 py-3 bg-pink-600 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-pink-200 active:scale-95 transition disabled:opacity-50"
               >
                 {actionLoading ? 'Guardando...' : 'Enviar Cotización'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL MARCAR COMPRADO Y SUBIR PNR / ENVIAR A ORBIX ───────────────── */}
+      {showComprarModal && (
+        <div className="fixed inset-0 bg-slate-900/80 z-[80] flex items-end justify-center backdrop-blur-sm" onClick={() => setShowComprarModal(false)}>
+          <div 
+            className="bg-white w-full max-w-xl rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Grabber */}
+            <div className="pt-3 pb-1 shrink-0">
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto" />
+            </div>
+
+            {/* Modal Header */}
+            <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="text-lg font-black text-slate-800">Confirmar Compra y PNR</h3>
+                <p className="text-[10px] font-bold text-slate-400">Ticket {selectedTicket?.[0]} • Envío a Orbix</p>
+              </div>
+              <button onClick={() => setShowComprarModal(false)} className="text-slate-400 font-bold text-xl px-2">✕</button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-4 bg-slate-50/50">
+              <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-3.5 flex items-start gap-2.5">
+                <span className="text-emerald-600 text-lg leading-none">💡</span>
+                <p className="text-[11px] font-bold text-emerald-800 leading-snug">
+                  Ingresa o verifica la <b>Clave de Reserva (PNR)</b> y <b>Número de Vuelo</b>. Al confirmar, el ticket se marcará como <b>Comprado</b> y se registrará automáticamente en <b>Orbix (Viajes y Reservas)</b>.
+                </p>
+              </div>
+
+              {pnrForm.map((item, idx) => (
+                <div key={item.idOpcion} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                    <span className="bg-slate-800 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase">
+                      Opción {idx + 1} • {item.idOpcion}
+                    </span>
+                    <span className="text-xs font-black text-slate-700">
+                      ${Number(item.total || 0).toLocaleString('es-MX')} MXN
+                    </span>
+                  </div>
+
+                  <p className="text-xs font-bold text-slate-600">{item.ruta || 'Servicio de viaje'}</p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
+                        Número de Vuelo
+                      </label>
+                      <input 
+                        type="text" 
+                        value={item.vuelo}
+                        onChange={e => updatePnrFormField(idx, 'vuelo', e.target.value.toUpperCase())}
+                        placeholder="Ej: AM500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-700 uppercase outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-indigo-600 uppercase tracking-wider block mb-1">
+                        Clave PNR *
+                      </label>
+                      <input 
+                        type="text" 
+                        value={item.pnr}
+                        onChange={e => updatePnrFormField(idx, 'pnr', e.target.value.toUpperCase())}
+                        placeholder="Ej: X7B9M2"
+                        className="w-full bg-indigo-50/40 border-2 border-indigo-300 rounded-xl px-3 py-2 text-xs font-black text-indigo-700 font-mono uppercase outline-none focus:border-indigo-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                  Comprobante o Link de Compra (Opcional)
+                </label>
+                <input 
+                  type="text" 
+                  value={comprobanteUrl}
+                  onChange={e => setComprobanteUrl(e.target.value)}
+                  placeholder="https://... o referencia interna"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-pink-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-white shrink-0 flex gap-2">
+              <button 
+                onClick={() => setShowComprarModal(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black py-3.5 rounded-2xl text-xs uppercase tracking-wider"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleConfirmarCompraYOrbix}
+                disabled={actionLoading}
+                className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-2xl shadow-lg shadow-emerald-200 text-xs uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? 'Enviando a Orbix...' : '✓ Confirmar y Enviar a Orbix'}
               </button>
             </div>
           </div>

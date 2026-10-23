@@ -77,7 +77,7 @@ export async function handleCreateRequest(authParams: any, data: any) {
 export async function handleSaveAllOptions(authParams: any, data: any) {
   const userAuth = await authenticateUser(authParams);
   if (!userAuth) return { status: 'error', message: 'Sesión inválida.' };
-  if (userAuth.role !== 'indipris' && userAuth.role !== 'super') {
+  if (userAuth.role !== 'indipris' && userAuth.role !== 'super' && userAuth.role !== 'admin') {
     return { status: 'error', message: 'Sin permisos para cotizar.' };
   }
 
@@ -280,7 +280,7 @@ export async function handleMarkPurchased(authParams: any, data: any) {
   if (!userAuth) return { status: 'error', message: 'Sesión inválida.' };
 
   try {
-    const { idTicket, comprobanteUrl } = data;
+    const { idTicket, comprobanteUrl, optionIds } = data;
     const solicitudes = await getSheetData('Solicitudes');
     for (let i = 0; i < solicitudes.length; i++) {
       if (String(solicitudes[i][0]) === String(idTicket)) {
@@ -293,8 +293,14 @@ export async function handleMarkPurchased(authParams: any, data: any) {
     const options = await getSheetData('Opciones_Cotizacion');
     for (let i = 0; i < options.length; i++) {
       const ticketId = String(options[i][0] || '').trim();
+      const opId = String(options[i][1] || '').trim();
       const estado = String(options[i][6] || '').trim();
-      if (ticketId === String(idTicket) && estado === 'Autorizada') {
+      const shouldMark = ticketId === String(idTicket) && (
+        estado === 'Autorizada' || 
+        (Array.isArray(optionIds) && optionIds.includes(opId))
+      );
+
+      if (shouldMark) {
         await updateCell('Opciones_Cotizacion', i + 2, 7, 'Comprado'); // col 7 is Estado_Opcion
         if (comprobanteUrl) {
           await updateCell('Opciones_Cotizacion', i + 2, 12, comprobanteUrl); // col 12 is receipt image

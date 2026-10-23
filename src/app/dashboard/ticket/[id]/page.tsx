@@ -83,6 +83,35 @@ export default function TicketDetailPage() {
     }
   };
 
+  const handleExportarOrbix = async () => {
+    setSaving(true);
+    setMsg('');
+    try {
+      const authRaw = typeof window !== 'undefined' ? localStorage.getItem('indipris_session_secure') : null;
+      const auth = authRaw ? JSON.parse(authRaw) : null;
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'exportarALegacy',
+          auth: { u: auth?.name || user?.username, h: auth?.hash },
+          idTicket: id
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        setMsg('¡Exportado a Orbix exitosamente!');
+        setTimeout(() => setMsg(''), 4000);
+      } else {
+        alert(data.message || 'Error al exportar a Orbix');
+      }
+    } catch {
+      alert('Error de conexión con Orbix');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const role = user?.role;
   const canManage = role === 'indipris' || role === 'super' || role === 'admin';
   const canAuthorize = role === 'admin' || role === 'super';
@@ -135,6 +164,12 @@ export default function TicketDetailPage() {
               <button onClick={() => changeStatus('Comprado')} disabled={saving}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition uppercase tracking-widest disabled:opacity-50">
                 ✓ Marcar Comprado
+              </button>
+            )}
+            {canManage && ticket.estado === 'Comprado' && (
+              <button onClick={handleExportarOrbix} disabled={saving}
+                className="px-4 py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black shadow-lg shadow-amber-200 hover:bg-amber-600 transition uppercase tracking-widest disabled:opacity-50">
+                🚀 Enviar a Orbix
               </button>
             )}
             {(canManage || canAuthorize) && !['Cancelado', 'Comprado'].includes(ticket.estado) && (
