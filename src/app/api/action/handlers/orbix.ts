@@ -66,7 +66,15 @@ export async function handleExportarALegacy(authParams: any, data: any) {
   
   const formatter = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const nowParts = formatter.formatToParts(new Date());
-  const nowFormatted = `${nowParts.find(p => p.type === 'year')?.value}-${nowParts.find(p => p.type === 'month')?.value}-${nowParts.find(p => p.type === 'day')?.value} ${nowParts.find(p => p.type === 'hour')?.value}:${nowParts.find(p => p.type === 'minute')?.value}:${nowParts.find(p => p.type === 'second')?.value}`;
+  const year = nowParts.find(p => p.type === 'year')?.value;
+  const month = nowParts.find(p => p.type === 'month')?.value;
+  const day = nowParts.find(p => p.type === 'day')?.value;
+  const hour = nowParts.find(p => p.type === 'hour')?.value;
+  const minute = nowParts.find(p => p.type === 'minute')?.value;
+  const second = nowParts.find(p => p.type === 'second')?.value;
+
+  const nowFormatted = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  const nowDateOnly = `${month}/${day}/${year}`;
   
   const destinosUnicos: string[] = [];
   const destVisto: any = {};
@@ -147,7 +155,8 @@ export async function handleExportarALegacy(authParams: any, data: any) {
         evento: evento || '',
         contacto_id: contactoId,
         destino_principal: destinoPrincipal,
-        timestamp: nowFormatted,
+        timestamp: nowDateOnly,
+        fecha_venta: nowDateOnly,
         fecha_min: fechaMin ? fmtShort(fechaMin) : '',
         fecha_max: fechaMax ? fmtShort(fechaMax) : '',
         status: 'Crédito',
@@ -168,7 +177,7 @@ export async function handleExportarALegacy(authParams: any, data: any) {
         contactoId,
         destinoPrincipal,
         '',
-        nowFormatted,
+        nowDateOnly, // 9: Fecha de venta de viaje (solo fecha, sin hora)
         fechaMin ? fmtShort(fechaMin) : '',
         fechaMax ? fmtShort(fechaMax) : '',
         'Crédito',
@@ -272,7 +281,8 @@ export async function handleExportarALegacy(authParams: any, data: any) {
           descripcion: descReserva,
           empresa_id: empresaId,
           id_ticket: idTicket,
-          timestamp: nowFormatted,
+          timestamp: nowDateOnly,
+          fecha_reserva: nowDateOnly,
           precio_servicio: precioServicio,
           tipo: tipoEmoji,
           num_pax: nPax,
@@ -300,7 +310,42 @@ export async function handleExportarALegacy(authParams: any, data: any) {
         });
       } else {
         await appendRow('Reservas', [
-          idReserva, descReserva, empresaId, idTicket, nowFormatted, precioServicio, tipoEmoji, nPax, aerolineaIda || '', '', origen, destino, regreso, fechaIn ? fmtShort(fechaIn) : '', (fechaOut || fechaIn) ? fmtShort(fechaOut || fechaIn) : '', hotelNombre, aerolineaIda, horaSalIda, horaLlegIda, claveIda, numVueloIda, aerolineaVta, horaSalVta, horaLlegVta, claveVta, numVueloVta, pnr || claveIda || '.', costoServicio, 7, '', '', '', '', descLimpia.substring(0, 200), emailAsignado, nowFormatted, 1, nowFormatted, ''
+          idReserva,
+          descReserva,
+          empresaId,
+          idTicket,
+          nowDateOnly, // 4: Fecha de reserva (solo fecha, sin hora)
+          precioServicio,
+          tipoEmoji,
+          nPax,
+          aerolineaIda || '',
+          '',
+          origen,
+          destino,
+          regreso,
+          fechaIn ? fmtShort(fechaIn) : '',
+          (fechaOut || fechaIn) ? fmtShort(fechaOut || fechaIn) : '',
+          hotelNombre,
+          aerolineaIda,
+          horaSalIda,
+          horaLlegIda,
+          claveIda,
+          numVueloIda,
+          aerolineaVta,
+          horaSalVta,
+          horaLlegVta,
+          claveVta,
+          numVueloVta,
+          pnr || claveIda || '.',
+          costoServicio,
+          7,
+          '', '', '', '',
+          descLimpia.substring(0, 200),
+          emailAsignado,
+          nowFormatted,
+          1,
+          nowFormatted,
+          ''
         ], legacyId);
       }
     }

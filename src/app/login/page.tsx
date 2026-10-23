@@ -55,6 +55,10 @@ export default function LoginPage() {
           />
           <h1 className="text-3xl font-black mt-6 tracking-tight text-slate-800">Indipris ERP</h1>
           <p className="text-slate-400 text-sm font-bold mt-1">Gestión Corporativa de Viajes</p>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200/60 rounded-full text-[10px] font-black tracking-wider uppercase">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            GitHub Conectado (v1.0.1)
+          </div>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">

@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
-  const rootDir = path.join(process.cwd(), 'gas'); 
-  const webAppDir = process.cwd();              
+  const gasDir = path.join(process.cwd(), 'gas');
   
   // The modules exactly as defined in Router.gs (matching spellings)
   const modules = [
@@ -12,7 +13,7 @@ export async function GET() {
     'Scripts_auth', 
     'Scripts_init',
     'Scripts_nav',
-    'Scripts_dashboard', // Might be Scripts_dashboards.html
+    'Scripts_dashboard',
     'Scripts_detalles', 
     'Scripts_cotizar',
     'Scripts_acciones', 
@@ -29,21 +30,12 @@ export async function GET() {
     if (mod === 'Scripts_dashboard') possibleNames.push('Scripts_dashboards.html');
     if (mod === 'Scripts_init') possibleNames.push('Scipts_init.html');
     
-    let fileContent = null;
-    let foundPath = '';
+    let fileContent: string | null = null;
     
-    // Search in parent directory (root) first, then web-app directory
     for (const name of possibleNames) {
-      const rootPath = path.join(rootDir, name);
-      const webAppPath = path.join(webAppDir, name);
-      
-      if (fs.existsSync(rootPath)) {
-        fileContent = fs.readFileSync(rootPath, 'utf-8');
-        foundPath = rootPath;
-        break;
-      } else if (fs.existsSync(webAppPath)) {
-        fileContent = fs.readFileSync(webAppPath, 'utf-8');
-        foundPath = webAppPath;
+      const filePath = path.join(gasDir, name);
+      if (fs.existsSync(filePath)) {
+        fileContent = fs.readFileSync(filePath, 'utf-8');
         break;
       }
     }

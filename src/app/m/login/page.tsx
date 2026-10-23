@@ -5,23 +5,28 @@ import { useRouter } from 'next/navigation';
 
 export default function MobileLogin() {
   const router = useRouter();
-  const [step, setStep] = useState<'LOGIN' | 'OTP_REQUEST' | 'OTP_VERIFY'>('LOGIN');
+  const [step, setStep] = useState<'LOGIN' | 'OTP_REQUEST' | 'OTP_VERIFY' | 'NEW_PASSWORD'>('LOGIN');
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [otpToken, setOtpToken] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
   const hashPassword = async (p: string) => {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !password) return;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSuccessMsg('');
     
     try {
       const hash = await hashPassword(password);
@@ -58,7 +63,7 @@ export default function MobileLogin() {
   const handleOTPRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !phone) return;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setSuccessMsg('');
     
     try {
       const res = await fetch('/api/action', {
@@ -68,9 +73,92 @@ export default function MobileLogin() {
       });
       const data = await res.json();
       if (data.status === 'success') {
+        if (data.data?.token) {
+          setOtpToken(data.data.token);
+        }
         setStep('OTP_VERIFY');
       } else {
-        setError(data.message);
+        setError(data.message || 'No se pudo enviar el código.');
+      }
+    } catch (err) {
+      setError('Error de conexión.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOTPVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanOtp = otp.trim();
+    if (!cleanOtp || cleanOtp.length < 6) {
+      setError('Ingresa el código completo de 6 dígitos.');
+      return;
+    }
+    setLoading(true); setError(''); setSuccessMsg('');
+
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verifyOTP',
+          usuario: user,
+          otp: cleanOtp,
+          token: otpToken
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        if (data.data?.resetToken) {
+          setResetToken(data.data.resetToken);
+        }
+        setStep('NEW_PASSWORD');
+      } else {
+        setError(data.message || 'Código incorrecto o expirado.');
+      }
+    } catch (err) {
+      setError('Error de conexión.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 4) {
+      setError('La nueva contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+    setLoading(true); setError(''); setSuccessMsg('');
+
+    try {
+      const hash = await hashPassword(newPassword);
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resetPassword',
+          usuario: user,
+          newPassHash: hash,
+          resetToken: resetToken
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        setSuccessMsg('¡Contraseña restablecida con éxito! Ya puedes iniciar sesión.');
+        setPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setOtp('');
+        setOtpToken('');
+        setResetToken('');
+        setStep('LOGIN');
+      } else {
+        setError(data.message || 'No se pudo actualizar la contraseña.');
       }
     } catch (err) {
       setError('Error de conexión.');
@@ -90,9 +178,14 @@ export default function MobileLogin() {
           </div>
           <h1 className="text-2xl font-black text-slate-800">Indipris ERP</h1>
           <p className="text-slate-400 font-bold text-xs">Acceso Móvil Corporativo</p>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200/60 rounded-full text-[10px] font-black tracking-wider uppercase">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Cloud & Serverless Ready
+          </div>
         </div>
 
-        {error && <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl text-center">{error}</div>}
+        {error && <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl text-center border border-red-100">{error}</div>}
+        {successMsg && <div className="bg-emerald-50 text-emerald-700 text-xs font-bold p-3 rounded-xl text-center border border-emerald-200">{successMsg}</div>}
 
         {step === 'LOGIN' && (
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -114,7 +207,7 @@ export default function MobileLogin() {
             >
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
-            <button type="button" onClick={() => setStep('OTP_REQUEST')} className="text-xs font-bold text-slate-400 mt-2 text-center underline">
+            <button type="button" onClick={() => { setError(''); setStep('OTP_REQUEST'); }} className="text-xs font-bold text-slate-400 mt-2 text-center underline">
               ¿Olvidaste tu contraseña?
             </button>
           </form>
@@ -122,7 +215,7 @@ export default function MobileLogin() {
 
         {step === 'OTP_REQUEST' && (
           <form onSubmit={handleOTPRequest} className="flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
-            <p className="text-xs font-bold text-slate-500 text-center mb-2">Te enviaremos un código por WhatsApp.</p>
+            <p className="text-xs font-bold text-slate-500 text-center mb-2">Ingresa tu usuario y teléfono registrado para recibir tu código OTP.</p>
             <input 
               type="text" 
               placeholder="Tu Usuario" 
@@ -141,29 +234,66 @@ export default function MobileLogin() {
             >
               {loading ? 'Enviando...' : 'Pedir Código'}
             </button>
-            <button type="button" onClick={() => setStep('LOGIN')} className="text-xs font-bold text-slate-400 mt-2 text-center underline">
+            <button type="button" onClick={() => { setError(''); setStep('LOGIN'); }} className="text-xs font-bold text-slate-400 mt-2 text-center underline">
               Volver al Login
             </button>
           </form>
         )}
 
         {step === 'OTP_VERIFY' && (
-          <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-200">
-             <p className="text-xs font-bold text-emerald-600 text-center mb-2">Código enviado a {phone}</p>
+          <form onSubmit={handleOTPVerify} className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-200">
+             <p className="text-xs font-bold text-emerald-600 text-center mb-2">Código generado para {phone || user}</p>
              <input 
-              type="number"
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
               autoComplete="one-time-code" 
               placeholder="6 Dígitos" 
-              value={otp} onChange={e => setOtp(e.target.value)}
+              value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
               className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black text-2xl tracking-[0.5em] text-center outline-none focus:border-emerald-500 transition-colors"
             />
-            <button className="w-full bg-emerald-500 text-white font-black p-4 rounded-2xl shadow-lg mt-2 active:scale-95 uppercase tracking-widest text-sm">
-              Verificar
+            <button 
+              type="submit"
+              disabled={loading || otp.length < 6}
+              className="w-full bg-emerald-500 disabled:opacity-50 text-white font-black p-4 rounded-2xl shadow-lg mt-2 active:scale-95 uppercase tracking-widest text-sm"
+            >
+              {loading ? 'Verificando...' : 'Verificar'}
             </button>
-          </div>
+            <button type="button" onClick={() => { setError(''); setStep('OTP_REQUEST'); }} className="text-xs font-bold text-slate-400 mt-2 text-center underline">
+              Reenviar o Cambiar Número
+            </button>
+          </form>
+        )}
+
+        {step === 'NEW_PASSWORD' && (
+          <form onSubmit={handleResetPassword} className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-200">
+            <p className="text-xs font-bold text-slate-600 text-center mb-1">Crea una nueva contraseña segura para tu cuenta.</p>
+            <input 
+              type="password" 
+              placeholder="Nueva Contraseña" 
+              value={newPassword} onChange={e => setNewPassword(e.target.value)}
+              className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none focus:border-pink-500"
+            />
+            <input 
+              type="password" 
+              placeholder="Confirmar Contraseña" 
+              value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+              className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold outline-none focus:border-pink-500"
+            />
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full bg-pink-500 text-white font-black p-4 rounded-2xl shadow-lg shadow-pink-200 mt-2 active:scale-95 transition-transform uppercase tracking-widest text-sm"
+            >
+              {loading ? 'Guardando...' : 'Cambiar Contraseña'}
+            </button>
+            <button type="button" onClick={() => { setError(''); setStep('LOGIN'); }} className="text-xs font-bold text-slate-400 mt-2 text-center underline">
+              Cancelar
+            </button>
+          </form>
         )}
 
       </div>
     </div>
-  )
+  );
 }

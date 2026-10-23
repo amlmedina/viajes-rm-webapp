@@ -66,16 +66,23 @@ export default function CargarCotizacionesModal({ idTicket, pasajerosCount, onCl
     });
 
     try {
-      const res = await fetch(`/api/tickets/${idTicket}/options`, {
+      const authRaw = typeof window !== 'undefined' ? localStorage.getItem('indipris_session_secure') : null;
+      const auth = authRaw ? JSON.parse(authRaw) : null;
+      const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ opciones: payload })
+        body: JSON.stringify({
+          action: 'saveAllOptions',
+          auth: { u: auth?.name, h: auth?.hash },
+          idTicket,
+          opciones: payload
+        })
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
         onSuccess();
       } else {
-        const data = await res.json();
-        setError(data.error || 'Error al guardar');
+        setError(data.message || 'Error al guardar');
       }
     } catch {
       setError('Error de conexión');

@@ -458,13 +458,13 @@
     }
 
     window.removeOpcionSlot = (svcId, optId) => {
-        currentOpcionesPorServicio[svcId] = currentOpcionesPorServicio[svcId].filter(o => o.id !== optId);
+        currentOpcionesPorServicio[svcId] = currentOpcionesPorServicio[svcId].filter(o => String(o.id) !== String(optId));
         renderOptModal();
     };
 
     // updateOpcion — actualiza el dato Y solo refresca el resumen de precios (sin re-render completo)
     window.updateOpcion = (svcId, optId, field, value) => {
-        const op = currentOpcionesPorServicio[svcId].find(o => o.id === optId);
+        const op = currentOpcionesPorServicio[svcId]?.find(o => String(o.id) === String(optId));
         if (!op) return;
         op[field] = value;
         if (field === 'costo' || field === 'fee') {
@@ -474,7 +474,7 @@
 
     // Recalcular resumen de precios respetando checkbox IVA
     function _recalcPriceSummary(svcId, optId) {
-        const op = currentOpcionesPorServicio[svcId]?.find(o => o.id === optId);
+        const op = currentOpcionesPorServicio[svcId]?.find(o => String(o.id) === String(optId));
         if (!op) return;
         const nPax = (localData.ticketEnFoco.pasajeros || []).length || 1;
         const aplicaIVA = document.getElementById('opt-aplica-iva')?.checked ?? true;
@@ -597,27 +597,27 @@
       <span class="text-lg shrink-0"></span>
       <div class="flex-1">
         <label class="text-[9px] font-black text-indigo-700 uppercase tracking-widest block mb-1">Aerolinea <span class="text-red-500">*</span></label>
-        <input type="text" value="${o.v_aerolinea || ''}" onchange="updateOpcion('${svcId}',${o.id},'v_aerolinea',this.value)"
+        <input type="text" value="${o.v_aerolinea || ''}" oninput="updateOpcion('${svcId}','${o.id}','v_aerolinea',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_aerolinea',this.value)"
           placeholder="Ej. Aeromexico, Volaris, United..."
           class="w-full border-b-2 border-indigo-300 py-1.5 outline-none font-black text-sm bg-transparent focus:border-indigo-600 text-indigo-800 placeholder-indigo-300"
           required>
       </div>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Fecha</label><input type="date" value="${o.v_fecha}" onchange="updateOpcion('${svcId}',${o.id},'v_fecha',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Origen</label><input type="text" value="${o.v_origen}" onchange="updateOpcion('${svcId}',${o.id},'v_origen',this.value)" placeholder="MEX" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Destino</label><input type="text" value="${o.v_destino}" onchange="updateOpcion('${svcId}',${o.id},'v_destino',this.value)" placeholder="CUN" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">No. Vuelo</label><input type="text" value="${o.v_num}" onchange="updateOpcion('${svcId}',${o.id},'v_num',this.value)" placeholder="AM500" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Salida</label><input type="time" value="${o.v_hSalida}" onchange="updateOpcion('${svcId}',${o.id},'v_hSalida',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Llegada</label><input type="time" value="${o.v_hLlegada}" onchange="updateOpcion('${svcId}',${o.id},'v_hLlegada',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">PNR</label><input type="text" value="${o.v_pnr}" onchange="updateOpcion('${svcId}',${o.id},'v_pnr',this.value)" placeholder="X7B9M2" class="w-full border-b-2 border-slate-200 py-2 outline-none font-black text-xs bg-transparent text-pink-600 focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Fecha</label><input type="date" value="${o.v_fecha}" oninput="updateOpcion('${svcId}','${o.id}','v_fecha',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_fecha',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Origen</label><input type="text" value="${o.v_origen}" oninput="updateOpcion('${svcId}','${o.id}','v_origen',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_origen',this.value)" placeholder="MEX" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Destino</label><input type="text" value="${o.v_destino}" oninput="updateOpcion('${svcId}','${o.id}','v_destino',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_destino',this.value)" placeholder="CUN" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">No. Vuelo</label><input type="text" value="${o.v_num}" oninput="updateOpcion('${svcId}','${o.id}','v_num',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_num',this.value)" placeholder="AM500" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main uppercase"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Salida</label><input type="time" value="${o.v_hSalida}" oninput="updateOpcion('${svcId}','${o.id}','v_hSalida',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_hSalida',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Hora Llegada</label><input type="time" value="${o.v_hLlegada}" oninput="updateOpcion('${svcId}','${o.id}','v_hLlegada',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_hLlegada',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div class="col-span-2"><label class="text-[8px] font-black text-slate-400 uppercase">PNR</label><input type="text" value="${o.v_pnr}" oninput="updateOpcion('${svcId}','${o.id}','v_pnr',this.value)" onchange="updateOpcion('${svcId}','${o.id}','v_pnr',this.value)" placeholder="X7B9M2" class="w-full border-b-2 border-slate-200 py-2 outline-none font-black text-xs bg-transparent text-pink-600 focus:border-indipris-main uppercase"></div>
     </div>`;
         } else if (o.tipo === 'HOTEL') {
             camposHtml = `<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 bg-white p-3 rounded-xl border border-slate-200">
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Nombre del Hotel</label><input type="text" value="${o.h_nombre}" onchange="updateOpcion('${svcId}',${o.id},'h_nombre',this.value)" placeholder="Marriott Reforma" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
-      <div><label class="text-[8px] font-black text-slate-400 uppercase">Direccion</label><input type="text" value="${o.h_dir}" onchange="updateOpcion('${svcId}',${o.id},'h_dir',this.value)" placeholder="Paseo de la Reforma..." class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Nombre del Hotel</label><input type="text" value="${o.h_nombre}" oninput="updateOpcion('${svcId}','${o.id}','h_nombre',this.value)" onchange="updateOpcion('${svcId}','${o.id}','h_nombre',this.value)" placeholder="Marriott Reforma" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
+      <div><label class="text-[8px] font-black text-slate-400 uppercase">Direccion</label><input type="text" value="${o.h_dir}" oninput="updateOpcion('${svcId}','${o.id}','h_dir',this.value)" onchange="updateOpcion('${svcId}','${o.id}','h_dir',this.value)" placeholder="Paseo de la Reforma..." class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main"></div>
       <div><label class="text-[8px] font-black text-slate-400 uppercase">Regimen</label>
-        <select onchange="updateOpcion('${svcId}',${o.id},'h_desayuno',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main">
+        <select onchange="updateOpcion('${svcId}','${o.id}','h_desayuno',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-xs bg-transparent focus:border-indipris-main">
           <option ${o.h_desayuno === 'Solo Habitación' ? 'selected' : ''}>Solo Habitacion</option>
           <option ${o.h_desayuno === 'Desayuno Incluido' ? 'selected' : ''}>Desayuno Incluido</option>
           <option ${o.h_desayuno === 'Media Pensión' ? 'selected' : ''}>Media Pension</option>
@@ -626,44 +626,45 @@
       </div>
     </div>`;
         } else {
-            camposHtml = `<div class="mb-4"><label class="text-[8px] font-black text-slate-400 uppercase">Descripcion</label><input type="text" placeholder="Detalles de la opcion..." value="${o.desc}" onchange="updateOpcion('${svcId}',${o.id},'desc',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-sm bg-transparent placeholder-slate-400 focus:border-indipris-main"></div>`;
+            camposHtml = `<div class="mb-4"><label class="text-[8px] font-black text-slate-400 uppercase">Descripcion</label><input type="text" placeholder="Detalles de la opcion..." value="${o.desc}" oninput="updateOpcion('${svcId}','${o.id}','desc',this.value)" onchange="updateOpcion('${svcId}','${o.id}','desc',this.value)" class="w-full border-b-2 border-slate-200 py-2 outline-none font-bold text-sm bg-transparent placeholder-slate-400 focus:border-indipris-main"></div>`;
         }
 
         return `<div id="opt-slot-${o.id}" class="p-4 border-2 border-slate-100 shadow-sm rounded-xl relative bg-slate-50">
     <span class="absolute -top-2 left-4 bg-slate-800 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-sm">OPCION ${index + 1}</span>
-    ${total > 1 ? `<button onclick="removeOpcionSlot('${svcId}',${o.id})" class="absolute top-2 right-2 text-red-500 font-bold text-xs hover:text-red-700 w-6 h-6 flex items-center justify-center bg-red-50 rounded-full">x</button>` : ''}
+    ${total > 1 ? `<button onclick="removeOpcionSlot('${svcId}','${o.id}')" class="absolute top-2 right-2 text-red-500 font-bold text-xs hover:text-red-700 w-6 h-6 flex items-center justify-center bg-red-50 rounded-full">x</button>` : ''}
     <div class="mt-4">
       ${camposHtml}
       <!-- Comentarios visibles para el cliente -->
       <div class="mb-4">
         <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1"> Comentarios para el cliente</label>
         <textarea rows="2" placeholder="Ej: Incluye maleta documentada, salida temprana recomendada..."
-          onchange="updateOpcion('${svcId}',${o.id},'comentario',this.value)"
+          oninput="updateOpcion('${svcId}','${o.id}','comentario',this.value)"
+          onchange="updateOpcion('${svcId}','${o.id}','comentario',this.value)"
           class="w-full border-2 border-slate-200 rounded-xl p-3 outline-none font-bold text-xs text-slate-700 bg-white focus:border-indipris-main resize-none placeholder-slate-300">${o.comentario || ''}</textarea>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-200 pt-4 mt-2">
         <div class="bg-red-50 p-2 rounded-lg border border-red-200 shadow-inner">
           <label class="text-[8px] font-black text-red-600 uppercase">[P] Costo Neto (Privado)</label>
-          <input type="number" value="${o.costoProveedor}" onchange="updateOpcion('${svcId}',${o.id},'costoProveedor',this.value)" placeholder="0.00" class="w-full bg-transparent border-b-2 border-red-200 py-1 outline-none font-black text-red-800 text-sm focus:border-red-400 placeholder-red-300">
+          <input type="number" value="${o.costoProveedor}" oninput="updateOpcion('${svcId}','${o.id}','costoProveedor',this.value)" onchange="updateOpcion('${svcId}','${o.id}','costoProveedor',this.value)" placeholder="0.00" class="w-full bg-transparent border-b-2 border-red-200 py-1 outline-none font-black text-red-800 text-sm focus:border-red-400 placeholder-red-300">
         </div>
         <div class="p-2">
           <label class="text-[8px] font-black text-slate-400 uppercase">Costo Base Venta</label>
-          <input type="number" value="${o.costo}" onchange="updateOpcion('${svcId}',${o.id},'costo',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+          <input type="number" value="${o.costo}" oninput="updateOpcion('${svcId}','${o.id}','costo',this.value)" onchange="updateOpcion('${svcId}','${o.id}','costo',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
         </div>
         <div class="p-2">
           <label class="text-[8px] font-black text-slate-400 uppercase">Fee Total (${nPax} pax × $300)</label>
-          <input type="number" value="${o.fee}" onchange="updateOpcion('${svcId}',${o.id},'fee',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
+          <input type="number" value="${o.fee}" oninput="updateOpcion('${svcId}','${o.id}','fee',this.value)" onchange="updateOpcion('${svcId}','${o.id}','fee',this.value)" placeholder="0.00" class="w-full border-b-2 border-slate-200 py-1 outline-none font-black text-slate-700 bg-transparent focus:border-indipris-main text-sm">
         </div>
       </div>
       <div class="mt-4">
         <label class="block w-full border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50 rounded-xl p-3 text-center cursor-pointer transition relative overflow-hidden bg-white">
           ${o.img ? `<img src="${o.img}" class="absolute inset-0 w-full h-full object-cover opacity-40"><span class="relative z-10 text-[10px] font-black text-pink-700">v Foto Subida</span>` : o.isUploadingImg ? `<span class="text-[10px] font-black text-slate-500">... Subiendo...</span>` : `<span class="text-[10px] font-black text-slate-500">[img] Subir foto de referencia (Opcional)</span>`}
-          <input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}',${o.id},this)">
+          <input type="file" class="hidden" accept="image/*" onchange="uploadOptionImage('${svcId}','${o.id}',this)">
         </label>
       </div>
       <!-- Resumen de precios - se actualiza solo sin re-render del form -->
       <div id="price-summary-${o.id}" class="mt-3 price-summary">
-        ${buildPriceSummaryHTML(c, feeUnit, nPax, sub, iva, tot)}
+        ${buildPriceSummaryHTML(feeUnit, nPax, sub, iva, tot, document.getElementById('opt-aplica-iva')?.checked ?? true)}
       </div>
     </div>
   </div>`;

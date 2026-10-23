@@ -1,4 +1,6 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Indipris ERP | Viajes RM
+
+Sistema integral de gestión de viajes corporativos, cotizaciones y reservas.
 
 ## Getting Started
 

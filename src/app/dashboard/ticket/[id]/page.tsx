@@ -84,7 +84,7 @@ export default function TicketDetailPage() {
   };
 
   const role = user?.role;
-  const canManage = role === 'indipris' || role === 'super';
+  const canManage = role === 'indipris' || role === 'super' || role === 'admin';
   const canAuthorize = role === 'admin' || role === 'super';
 
   if (loading) return (

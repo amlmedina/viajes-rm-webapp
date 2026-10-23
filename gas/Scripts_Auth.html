@@ -105,6 +105,9 @@
     // ─────────────────────────────────────────────────────────────────────────────
     // AUTH — OTP (CORREGIDO: flujo completo server-side, código nunca sale del servidor)
     // ─────────────────────────────────────────────────────────────────────────────
+    let otpTokenEnFoco = "";
+    let resetTokenEnFoco = "";
+
     window.toggleOTPView = (show) => {
         document.getElementById('form-login').classList.toggle('hidden', show);
         document.getElementById('form-otp').classList.toggle('hidden', !show);
@@ -113,6 +116,8 @@
         document.getElementById('otp-step-2').classList.add('hidden');
         document.getElementById('otp-step-3').classList.add('hidden');
         otpUserEnFoco = "";
+        otpTokenEnFoco = "";
+        resetTokenEnFoco = "";
     };
 
     window.requestOTP = async () => {
@@ -123,13 +128,14 @@
         const btn = document.getElementById('btn-send-otp');
         btn.disabled = true; btn.innerText = "ENVIANDO...";
 
-        // El servidor genera, guarda y envía el OTP. Nunca lo devuelve al cliente.
+        // El servidor genera, guarda y envía el OTP. Retorna token firmado sin revelar el código.
         const res = await apiCall('requestOTP', { usuario, telefono });
 
         btn.disabled = false; btn.innerText = "Enviar Código por WhatsApp";
 
         if (res.status === "success") {
             otpUserEnFoco = usuario;
+            otpTokenEnFoco = (res.data && res.data.token) ? res.data.token : "";
             document.getElementById('otp-step-1').classList.add('hidden');
             document.getElementById('otp-step-2').classList.remove('hidden');
         } else {
@@ -141,10 +147,15 @@
         const codigo = document.getElementById('otp-code').value.trim();
         if (!codigo || codigo.length !== 6) return Toast.fire({ text: "Ingresa el código de 6 dígitos.", icon: "warning" });
 
-        // El servidor verifica el código — el frontend NUNCA lo sabe de antemano
-        const res = await apiCall('verifyOTP', { usuario: otpUserEnFoco, otp: codigo });
+        // El servidor verifica el código statelessly o con fallback
+        const res = await apiCall('verifyOTP', { 
+            usuario: otpUserEnFoco, 
+            otp: codigo,
+            token: otpTokenEnFoco 
+        });
 
         if (res.status === "success") {
+            resetTokenEnFoco = (res.data && res.data.resetToken) ? res.data.resetToken : "";
             document.getElementById('otp-step-2').classList.add('hidden');
             document.getElementById('otp-step-3').classList.remove('hidden');
         } else {
@@ -162,7 +173,11 @@
         btn.disabled = true; btn.innerText = "GUARDANDO...";
 
         const hash = await hashPassword(newPass);
-        const res = await apiCall('resetPassword', { usuario: otpUserEnFoco, newPassHash: hash });
+        const res = await apiCall('resetPassword', { 
+            usuario: otpUserEnFoco, 
+            newPassHash: hash,
+            resetToken: resetTokenEnFoco 
+        });
 
         btn.disabled = false; btn.innerText = "GUARDAR CONTRASEÑA";
 

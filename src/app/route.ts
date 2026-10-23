@@ -18,6 +18,8 @@ function resolveIncludes(content: string, baseDir: string): string {
   });
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const baseDir = path.join(process.cwd(), 'gas');
   const indexHtmlPath = path.join(baseDir, 'Index.html');
